@@ -1,0 +1,11 @@
+config_file = "config/lithium.properties"
+
+[settings_map]
+chunk = { target = "mixin.chunk", type = "bool" }
+ai = { target = "mixin.ai", type = "bool" }
+alloc = { target = "mixin.alloc", type = "bool" }
+shapes = { target = "mixin.shapes", type = "bool" }
+world = { target = "mixin.world", type = "bool" }
+entity = { target = "mixin.entity", type = "bool" }
+gen = { target = "mixin.gen", type = "bool" }
+util = { target = "mixin.util", type = "bool" }

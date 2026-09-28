@@ -1,0 +1,15 @@
+config_file = "config/sodium-options.json"
+
+[settings_map]
+chunk_builder_threads = { target = "performance.chunk_builder_threads", type = "int" }
+chunk_build_defer_mode = { target = "performance.chunk_build_defer_mode", type = "string" }
+animate_only_visible_textures = { target = "performance.animate_only_visible_textures", type = "bool" }
+use_entity_culling = { target = "performance.use_entity_culling", type = "bool" }
+use_fog_occlusion = { target = "performance.use_fog_occlusion", type = "bool" }
+use_block_face_culling = { target = "performance.use_block_face_culling", type = "bool" }
+use_no_error_gl_context = { target = "performance.use_no_error_g_l_context", type = "bool" }
+cpu_render_ahead_limit = { target = "advanced.cpu_render_ahead_limit", type = "int" }
+use_advanced_staging_buffers = { target = "advanced.use_advanced_staging_buffers", type = "bool" }
+hidden_fluid_culling = { target = "quality.hidden_fluid_culling", type = "bool" }
+improved_fluid_shaping = { target = "quality.improved_fluid_shaping", type = "bool" }
+pixel_filtering_mode = { target = "quality.pixel_filtering_mode", type = "string" }

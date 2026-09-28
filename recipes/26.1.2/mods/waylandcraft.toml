@@ -1,0 +1,12 @@
+config_file = "waylandcraft/settings.json"
+
+[settings_map]
+pixels_per_block = { target = "pixelsPerBlock", type = "int" }
+focus_on_hover   = { target = "focusOnHover",   type = "bool" }
+terminal_choice  = { target = "terminalChoice",  type = "string" }
+detach_cursor    = { target = "detachCursor",    type = "bool" }
+
+[keybinds]
+key_launcher        = "key_waylandcraft.key.appLauncher"
+key_window_manager  = "key_waylandcraft.key.windowManager"
+key_capture_keyboard = "key_waylandcraft.key.captureKeyboard"

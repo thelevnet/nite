@@ -1,0 +1,4 @@
+config_file = "config/bobby.json"
+
+[settings_map]
+max_render_distance = { target = "max-render-distance", type = "int" }

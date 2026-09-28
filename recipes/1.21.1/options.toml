@@ -1,0 +1,113 @@
+target_file = "options.txt"
+
+# ── Video ────────────────────────────────────────────────────────────────────
+[settings_map]
+vsync                  = { target = "enableVsync",               type = "bool"   }
+fullscreen             = { target = "fullscreen",                 type = "bool"   }
+exclusive_fullscreen   = { target = "exclusiveFullscreen",        type = "bool"   }
+gui_scale              = { target = "guiScale",                   type = "int"    }
+max_fps                = { target = "maxFps",                     type = "int"    }
+render_distance        = { target = "renderDistance",             type = "int"    }
+simulation_distance    = { target = "simulationDistance",         type = "int"    }
+gamma                  = { target = "gamma",                      type = "float"  }
+fov                    = { target = "fov",                        type = "float"  }
+fov_effect_scale       = { target = "fovEffectScale",             type = "float"  }
+particles              = { target = "particles",                   type = "int"    }
+# particles: 0 = all, 1 = decreased, 2 = minimal
+biome_blend_radius     = { target = "biomeBlendRadius",           type = "int"    }
+entity_distance_scaling = { target = "entityDistanceScaling",     type = "float"  }
+entity_shadows         = { target = "entityShadows",              type = "bool"   }
+mipmap_levels          = { target = "mipmapLevels",               type = "int"    }
+ambient_occlusion      = { target = "ao",                         type = "bool"   }
+graphics_preset        = { target = "graphicsPreset",             type = "string" }
+# graphics_preset: fast, fancy, fabulous
+prioritize_chunk_updates = { target = "prioritizeChunkUpdates",   type = "int"    }
+sync_chunk_writes      = { target = "syncChunkWrites",            type = "bool"   }
+cutout_leaves          = { target = "cutoutLeaves",               type = "bool"   }
+
+# ── Interface ────────────────────────────────────────────────────────────────
+reduced_debug_info     = { target = "reducedDebugInfo",           type = "bool"   }
+show_subtitles         = { target = "showSubtitles",              type = "bool"   }
+advanced_item_tooltips = { target = "advancedItemTooltips",       type = "bool"   }
+show_autosave_indicator = { target = "showAutosaveIndicator",     type = "bool"   }
+dark_mojang_background = { target = "darkMojangStudiosBackground", type = "bool"  }
+hide_lightning_flashes = { target = "hideLightningFlashes",       type = "bool"   }
+chat_opacity           = { target = "chatOpacity",                type = "float"  }
+chat_line_spacing      = { target = "chatLineSpacing",            type = "float"  }
+chat_delay             = { target = "chatDelay",                  type = "float"  }
+chat_width             = { target = "chatWidth",                  type = "float"  }
+chat_focused_height    = { target = "chatHeightFocused",          type = "float"  }
+chat_unfocused_height  = { target = "chatHeightUnfocused",        type = "float"  }
+narrator               = { target = "narrator",                   type = "int"    }
+# narrator: 0 = off, 1 = all, 2 = chat, 3 = system
+
+# ── Audio ────────────────────────────────────────────────────────────────────
+sound_device           = { target = "soundDevice",                type = "string" }
+master_volume          = { target = "masterVolume",               type = "float"  }
+music_volume           = { target = "soundCategory_music",        type = "float"  }
+record_volume          = { target = "soundCategory_record",       type = "float"  }
+weather_volume         = { target = "soundCategory_weather",      type = "float"  }
+block_volume           = { target = "soundCategory_block",        type = "float"  }
+hostile_volume         = { target = "soundCategory_hostile",      type = "float"  }
+neutral_volume         = { target = "soundCategory_neutral",      type = "float"  }
+player_volume          = { target = "soundCategory_player",       type = "float"  }
+ambient_volume         = { target = "soundCategory_ambient",      type = "float"  }
+voice_volume           = { target = "soundCategory_voice",        type = "float"  }
+
+# ── Mouse / input ────────────────────────────────────────────────────────────
+mouse_sensitivity      = { target = "mouseSensitivity",           type = "float"  }
+raw_mouse_input        = { target = "rawMouseInput",              type = "bool"   }
+invert_mouse           = { target = "invertYMouse",               type = "bool"   }
+discrete_mouse_scroll  = { target = "discreteMouseScroll",        type = "bool"   }
+bob_view               = { target = "bobView",                    type = "bool"   }
+auto_jump              = { target = "autoJump",                   type = "bool"   }
+toggle_sprint          = { target = "toggleSprint",               type = "bool"   }
+toggle_sneak           = { target = "toggleCrouch",               type = "bool"   }
+inactivity_fps_limit   = { target = "inactivityFpsLimit",         type = "string" }
+# inactivity_fps_limit: AFK, MENU, WINDOW, NEVER
+
+# ── Keybinds ─────────────────────────────────────────────────────────────────
+# Values use the format: key.keyboard.<key> or key.mouse.<button>
+# Common values:
+#   key.keyboard.a  key.keyboard.q  key.keyboard.left.shift
+#   key.keyboard.left.control  key.keyboard.left.alt
+#   key.keyboard.space  key.keyboard.f  key.keyboard.r
+#   key.mouse.left  key.mouse.right  key.mouse.middle
+#   key.keyboard.unknown  (= unbound)
+#
+# Example: set sneak to Q → key_sneak = "key.keyboard.q"
+
+key_attack             = { target = "key_key.attack",             type = "string" }
+key_use                = { target = "key_key.use",                type = "string" }
+key_forward            = { target = "key_key.forward",            type = "string" }
+key_back               = { target = "key_key.back",               type = "string" }
+key_left               = { target = "key_key.left",               type = "string" }
+key_right              = { target = "key_key.right",              type = "string" }
+key_jump               = { target = "key_key.jump",               type = "string" }
+key_sneak              = { target = "key_key.sneak",              type = "string" }
+key_sprint             = { target = "key_key.sprint",             type = "string" }
+key_drop               = { target = "key_key.drop",               type = "string" }
+key_inventory          = { target = "key_key.inventory",          type = "string" }
+key_chat               = { target = "key_key.chat",               type = "string" }
+key_playerlist         = { target = "key_key.playerlist",         type = "string" }
+key_pick_item          = { target = "key_key.pickItem",           type = "string" }
+key_command            = { target = "key_key.command",            type = "string" }
+key_social_interactions = { target = "key_key.socialInteractions", type = "string" }
+key_screenshot         = { target = "key_key.screenshot",         type = "string" }
+key_toggle_perspective = { target = "key_key.togglePerspective",  type = "string" }
+key_smooth_camera      = { target = "key_key.smoothCamera",       type = "string" }
+key_fullscreen         = { target = "key_key.fullscreen",         type = "string" }
+key_spectator_outlines = { target = "key_key.spectatorOutlines",  type = "string" }
+key_swap_offhand       = { target = "key_key.swapOffhand",        type = "string" }
+key_save_toolbar       = { target = "key_key.saveToolbarActivator", type = "string" }
+key_load_toolbar       = { target = "key_key.loadToolbarActivator", type = "string" }
+key_advancements       = { target = "key_key.advancements",       type = "string" }
+key_hotbar_1           = { target = "key_key.hotbar.1",           type = "string" }
+key_hotbar_2           = { target = "key_key.hotbar.2",           type = "string" }
+key_hotbar_3           = { target = "key_key.hotbar.3",           type = "string" }
+key_hotbar_4           = { target = "key_key.hotbar.4",           type = "string" }
+key_hotbar_5           = { target = "key_key.hotbar.5",           type = "string" }
+key_hotbar_6           = { target = "key_key.hotbar.6",           type = "string" }
+key_hotbar_7           = { target = "key_key.hotbar.7",           type = "string" }
+key_hotbar_8           = { target = "key_key.hotbar.8",           type = "string" }
+key_hotbar_9           = { target = "key_key.hotbar.9",           type = "string" }

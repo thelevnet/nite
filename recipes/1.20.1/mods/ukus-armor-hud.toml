@@ -1,0 +1,17 @@
+config_file = "config/ukus-armor-hud.toml"
+
+[settings_map]
+enabled = { target = "enabled", type = "bool" }
+anchor = { target = "anchor", type = "string" }
+side = { target = "side", type = "string" }
+offset_x = { target = "offsetX", type = "int" }
+offset_y = { target = "offsetY", type = "int" }
+style = { target = "style", type = "string" }
+orientation = { target = "orientation", type = "string" }
+widget_shown = { target = "widgetShown", type = "string" }
+durability_display = { target = "durabilityDisplay", type = "string" }
+icons_shown = { target = "iconsShown", type = "bool" }
+warning_shown = { target = "warningShown", type = "bool" }
+play_break_sound = { target = "playBreakSound", type = "bool" }
+min_durability_value = { target = "minDurabilityValue", type = "int" }
+min_durability_percentage = { target = "minDurabilityPercentage", type = "float" }

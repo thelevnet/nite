@@ -1,0 +1,9 @@
+config_file = "config/lambdynlights.toml"
+
+[settings_map]
+quality          = { target = "quality",                type = "string" }
+# quality: OFF, FASTEST, FAST, FANCY
+entity_lights    = { target = "entities_light_source",  type = "bool"   }
+block_lights     = { target = "block_entities_light_source", type = "bool" }
+water_sensitive  = { target = "water_sensitive_check",  type = "bool"   }
+culling          = { target = "culling",                 type = "bool"   }

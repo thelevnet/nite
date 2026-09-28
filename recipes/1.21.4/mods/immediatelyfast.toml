@@ -1,0 +1,9 @@
+config_file = "config/immediatelyfast.json"
+
+[settings_map]
+fast_render           = { target = "fast_render",              type = "bool" }
+fast_text_rendering   = { target = "fast_text_rendering",      type = "bool" }
+fast_item_rendering   = { target = "fast_item_rendering",      type = "bool" }
+hud_batching          = { target = "hud_batching",             type = "bool" }
+immediate_font_renderer = { target = "immediate_font_renderer", type = "bool" }
+map_atlas_size        = { target = "map_atlas_size",           type = "int"  }

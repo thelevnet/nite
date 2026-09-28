@@ -1,0 +1,5 @@
+config_file = "config/continuity.json"
+
+[settings_map]
+connected_textures = { target = "connected_textures", type = "bool" }
+emissive_textures = { target = "emissive_textures", type = "bool" }

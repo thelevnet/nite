@@ -1,0 +1,15 @@
+config_file = "config/modmenu.json"
+
+[settings_map]
+sorting = { target = "sorting", type = "string" }
+count_libraries = { target = "count_libraries", type = "bool" }
+compact_list = { target = "compact_list", type = "bool" }
+count_children = { target = "count_children", type = "bool" }
+mods_button_style = { target = "mods_button_style", type = "string" }
+game_menu_button_style = { target = "game_menu_button_style", type = "string" }
+show_libraries = { target = "show_libraries", type = "bool" }
+easter_eggs = { target = "easter_eggs", type = "bool" }
+update_checker = { target = "update_checker", type = "bool" }
+quick_configure = { target = "quick_configure", type = "bool" }
+modify_title_screen = { target = "modify_title_screen", type = "bool" }
+modify_game_menu = { target = "modify_game_menu", type = "bool" }

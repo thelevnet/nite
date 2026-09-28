@@ -1,0 +1,5 @@
+config_file = "config/ferrite-core.toml"
+
+[settings_map]
+replace_hash_maps      = { target = "replaceHashMaps",          type = "bool" }
+patch_bytebuf_allocator = { target = "patchByteBufferAllocator", type = "bool" }

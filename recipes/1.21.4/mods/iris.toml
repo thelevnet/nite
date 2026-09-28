@@ -1,0 +1,10 @@
+config_file = "config/iris.properties"
+
+[settings_map]
+shader_pack = { target = "shaderPack", type = "string" }
+shaders_enabled = { target = "enableShaders", type = "bool" }
+allow_unknown_shaders = { target = "allowUnknownShaders", type = "bool" }
+max_shadow_render_distance = { target = "maxShadowRenderDistance", type = "int" }
+color_space = { target = "colorSpace", type = "string" }
+disable_update_message = { target = "disableUpdateMessage", type = "bool" }
+enable_debug_options = { target = "enableDebugOptions", type = "bool" }

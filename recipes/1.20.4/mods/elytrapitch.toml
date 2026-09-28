@@ -1,0 +1,12 @@
+config_file = "config/elytrapitch.toml"
+
+[settings_map]
+optimal_indicator = { target = "optimalIndicatorFP", type = "bool" }
+screen_position = { target = "screenPositionFP", type = "string" }
+ascend_angle = { target = "ascendAngle", type = "int" }
+descend_angle = { target = "descendAngle", type = "int" }
+glide_angle = { target = "glideAngle", type = "int" }
+indicator_width = { target = "indicatorWidth", type = "int" }
+durability_percentage = { target = "durabilityPercentage", type = "bool" }
+durability_threshold = { target = "durabilityThreshold", type = "float" }
+bold_message = { target = "boldMessage", type = "bool" }
