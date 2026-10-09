@@ -12,10 +12,37 @@ const HTTP_USER_AGENT: &str = "nite/0.1.0 (https://github.com/thelevnet/nite)";
 #[derive(Deserialize, Clone, Debug)]
 pub struct ModrinthVersion {
     #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
     pub version_number: Option<String>,
     pub files: Vec<ModrinthFile>,
     #[serde(default)]
     pub dependencies: Vec<ModrinthDependency>,
+}
+
+/// Helper to find a matching version from a list of Modrinth versions.
+/// Checks exact version_number/id, substring match in version_number, then substring in name.
+pub fn find_matching_version<'a>(versions: &'a [ModrinthVersion], req_ver: &str) -> Option<&'a ModrinthVersion> {
+    if let Some(v) = versions.iter().find(|v| {
+        v.version_number.as_deref() == Some(req_ver) || v.id.as_deref() == Some(req_ver)
+    }) {
+        return Some(v);
+    }
+    if let Some(v) = versions.iter().find(|v| {
+        v.version_number.as_deref().map_or(false, |vn| vn.contains(req_ver))
+    }) {
+        return Some(v);
+    }
+    if let Some(v) = versions.iter().find(|v| {
+        v.name.as_deref().map_or(false, |vn| vn.contains(req_ver))
+    }) {
+        return Some(v);
+    }
+    None
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -100,7 +127,9 @@ pub fn resolve_item_version(
         Vec::new()
     };
 
-    if versions.is_empty() {
+    // For resourcepacks and shaderpacks, allow fallback if game_versions filter returned nothing.
+    // Never fall back across Minecraft versions for mods!
+    if versions.is_empty() && (!is_mod || target_mc_version.is_none()) {
         let fallback_url = format!("{MODRINTH_API_URL}/project/{slug}/version");
         let fallback_resp = client
             .get(&fallback_url)
@@ -112,15 +141,17 @@ pub fn resolve_item_version(
     }
 
     if versions.is_empty() {
-        return Err(format!("item '{slug}' was not found on Modrinth or has no releases").into());
+        if let Some(mc_ver) = target_mc_version {
+            return Err(format!("item '{slug}' has no compatible releases for Minecraft {mc_ver}").into());
+        } else {
+            return Err(format!("item '{slug}' was not found on Modrinth or has no releases").into());
+        }
     }
 
     if let Some(req_ver) = requested_version {
-        let matched = versions
-            .iter()
-            .find(|v| v.version_number.as_deref() == Some(req_ver));
-        if matched.is_some() {
-            Ok(req_ver.to_string())
+        let matched = find_matching_version(&versions, req_ver);
+        if let Some(v) = matched {
+            Ok(v.version_number.clone().unwrap_or_else(|| req_ver.to_string()))
         } else {
             Err(format!(
                 "'{slug}' does not have version '{req_ver}'. Available versions include: {}",
@@ -167,7 +198,7 @@ pub fn check_package_updates(
             .and_then(|r| r.json().ok())
             .unwrap_or_default();
 
-        if versions.is_empty() {
+        if versions.is_empty() && !is_mod {
             let fallback_url = format!("{MODRINTH_API_URL}/project/{}/version", pkg.name);
             versions = client
                 .get(&fallback_url)
@@ -201,6 +232,13 @@ fn sync_mod_tree_recursive(
     visited_projects: &mut HashSet<String>,
     visited_versions: &mut HashSet<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(ref pid) = version_data.project_id {
+        visited_projects.insert(pid.clone());
+    }
+    if let Some(ref vid) = version_data.id {
+        visited_versions.insert(vid.clone());
+    }
+
     let primary_file = version_data
         .files
         .iter()
@@ -230,12 +268,24 @@ fn sync_mod_tree_recursive(
             continue;
         }
 
+        if let Some(ref pid) = dependency.project_id {
+            if visited_projects.contains(pid) {
+                continue;
+            }
+        }
+
         if let Some(ref vid) = dependency.version_id {
             if visited_versions.insert(vid.clone()) {
+                if let Some(ref pid) = dependency.project_id {
+                    visited_projects.insert(pid.clone());
+                }
                 let url = format!("{MODRINTH_API_URL}/version/{vid}");
                 if let Ok(resp) = client.get(&url).header("User-Agent", HTTP_USER_AGENT).send() {
                     if resp.status().is_success() {
                         if let Ok(dep_version) = resp.json::<ModrinthVersion>() {
+                            if let Some(ref pid) = dep_version.project_id {
+                                visited_projects.insert(pid.clone());
+                            }
                             let _ = sync_mod_tree_recursive(
                                 client,
                                 &dep_version,
@@ -291,7 +341,7 @@ pub fn sync_mods_directory(
     let mut visited_versions = HashSet::new();
 
     for entry in entries {
-        if !visited_projects.insert(entry.name.clone()) {
+        if visited_projects.contains(&entry.name) {
             continue;
         }
 
@@ -301,36 +351,34 @@ pub fn sync_mods_directory(
         );
         let resp = client.get(&url).header("User-Agent", HTTP_USER_AGENT).send()?;
 
-        let mut versions: Vec<ModrinthVersion> = if resp.status().is_success() {
+        let versions: Vec<ModrinthVersion> = if resp.status().is_success() {
             resp.json().unwrap_or_default()
         } else {
             Vec::new()
         };
 
         if versions.is_empty() {
-            let fallback_url = format!(
-                "{MODRINTH_API_URL}/project/{}/version?loaders=%5B%22fabric%22%5D",
-                entry.name
-            );
-            if let Ok(fallback_resp) = client.get(&fallback_url).header("User-Agent", HTTP_USER_AGENT).send() {
-                if fallback_resp.status().is_success() {
-                    versions = fallback_resp.json().unwrap_or_default();
-                }
-            }
-        }
-
-        if versions.is_empty() {
-            eprintln!("[nite] warning: no compatible version found for mod '{}'", entry.name);
+            eprintln!("[nite] warning: no compatible version found for mod '{}' on Minecraft {}", entry.name, mc_version);
             continue;
         }
 
         let target_version = if let Some(ref ver_str) = entry.version {
-            versions.iter().find(|v| v.version_number.as_deref() == Some(ver_str)).or_else(|| versions.first())
+            find_matching_version(&versions, ver_str).or_else(|| {
+                eprintln!("[nite] warning: pinned version '{ver_str}' not found for mod '{}' on Minecraft {}", entry.name, mc_version);
+                versions.first()
+            })
         } else {
             versions.first()
         };
 
         if let Some(v) = target_version {
+            visited_projects.insert(entry.name.clone());
+            if let Some(ref pid) = v.project_id {
+                if !visited_projects.insert(pid.clone()) && entry.version.is_none() {
+                    continue;
+                }
+            }
+
             sync_mod_tree_recursive(
                 client,
                 v,
@@ -400,7 +448,7 @@ pub fn sync_pack_directory(
         }
 
         let target_version = if let Some(ref ver_str) = entry.version {
-            versions.iter().find(|v| v.version_number.as_deref() == Some(ver_str)).or_else(|| versions.first())
+            find_matching_version(&versions, ver_str).or_else(|| versions.first())
         } else {
             versions.first()
         };
@@ -453,4 +501,53 @@ pub fn sync_pack_directory(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_find_matching_version() {
+        let v1 = ModrinthVersion {
+            id: Some("id1".to_string()),
+            project_id: Some("proj1".to_string()),
+            name: Some("[Fabric] Sodium Extra 0.9.4 - Minecraft 26.1.2".to_string()),
+            version_number: Some("mc26.1.2-0.9.4+fabric".to_string()),
+            files: vec![],
+            dependencies: vec![],
+        };
+        let v2 = ModrinthVersion {
+            id: Some("id2".to_string()),
+            project_id: Some("proj1".to_string()),
+            name: Some("[Fabric] Sodium Extra 0.9.3 for Minecraft 26.1.2".to_string()),
+            version_number: Some("mc26.1.2-0.9.3+fabric".to_string()),
+            files: vec![],
+            dependencies: vec![],
+        };
+        let versions = vec![v1, v2];
+
+        // Exact match
+        assert_eq!(
+            find_matching_version(&versions, "mc26.1.2-0.9.4+fabric").unwrap().id.as_deref(),
+            Some("id1")
+        );
+        // By ID
+        assert_eq!(
+            find_matching_version(&versions, "id2").unwrap().version_number.as_deref(),
+            Some("mc26.1.2-0.9.3+fabric")
+        );
+        // Substring match on version number
+        assert_eq!(
+            find_matching_version(&versions, "0.9.3").unwrap().id.as_deref(),
+            Some("id2")
+        );
+        // Substring match on name
+        assert_eq!(
+            find_matching_version(&versions, "Sodium Extra 0.9.4").unwrap().id.as_deref(),
+            Some("id1")
+        );
+        // Non-matching
+        assert!(find_matching_version(&versions, "0.8.0").is_none());
+    }
 }
