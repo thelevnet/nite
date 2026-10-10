@@ -1,4 +1,5 @@
 { lib
+, stdenv
 , rustPlatform
 , fetchFromGitHub
 , pkg-config
@@ -7,6 +8,7 @@
 , temurin-bin-25
 , openal
 , libGL
+, vulkan-loader
 , udev
 , wayland
 , libxkbcommon
@@ -20,6 +22,8 @@
 let
   runtimeLibs = [
     libGL
+    vulkan-loader
+    stdenv.cc.cc.lib
     openal
     udev
     wayland
@@ -65,7 +69,7 @@ rustPlatform.buildRustPackage rec {
   postFixup = ''
     wrapProgram $out/bin/nite \
       --prefix PATH : "${lib.makeBinPath [ temurin-bin-25 unzip ]}" \
-      --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath runtimeLibs}" \
+      --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath runtimeLibs}:/run/opengl-driver/lib" \
       --set-default NITE_RECIPES_PATH "$out/share/nite/recipes" \
       --set NIX_OPENAL_LIB "${openal}/lib/libopenal.so"
   '';

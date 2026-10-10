@@ -53,6 +53,8 @@
           buildInputs = [
             pkgs.openal
             pkgs.libGL
+            pkgs.vulkan-loader
+            pkgs.stdenv.cc.cc.lib
             pkgs.udev
             pkgs.wayland
             pkgs.libxkbcommon
@@ -67,6 +69,8 @@
             export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [
               pkgs.openal
               pkgs.libGL
+              pkgs.vulkan-loader
+              pkgs.stdenv.cc.cc.lib
               pkgs.udev
               pkgs.wayland
               pkgs.libxkbcommon
@@ -75,7 +79,7 @@
               pkgs.libxrandr
               pkgs.libxi
               pkgs.libxext
-            ]}:$LD_LIBRARY_PATH"
+            ]}:/run/opengl-driver/lib:$LD_LIBRARY_PATH"
             export NIX_OPENAL_LIB="${pkgs.openal}/lib/libopenal.so"
           '';
         };

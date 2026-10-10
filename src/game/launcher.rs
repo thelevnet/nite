@@ -120,10 +120,16 @@ pub fn spawn_game_process(
     }
 
     let mut native_paths = vec![natives_dir.to_string_lossy().into_owned()];
+    let nix_gl = PathBuf::from("/run/opengl-driver/lib");
+    if nix_gl.exists() {
+        native_paths.push(nix_gl.to_string_lossy().into_owned());
+    }
     if let Ok(ld) = std::env::var("LD_LIBRARY_PATH") {
         native_paths.push(ld);
     }
-    cmd.arg(format!("-Djava.library.path={}", native_paths.join(":")));
+    let full_ld = native_paths.join(":");
+    cmd.env("LD_LIBRARY_PATH", &full_ld);
+    cmd.arg(format!("-Djava.library.path={full_ld}"));
 
     let nix_openal = std::env::var("NIX_OPENAL_LIB")
         .map(PathBuf::from)
