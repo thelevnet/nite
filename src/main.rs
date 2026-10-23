@@ -1,257 +1,293 @@
-//! Main entry point for the nite launcher.
+//! Pure declarative Minecraft launcher for NixOS.
 
-pub mod auth;
-pub mod cli;
-pub mod config;
-pub mod game;
+pub mod lock;
+pub mod servers;
 
-use cli::{Action, BackupCommands, Cli, InstanceAction, ItemAction};
-use config::{ItemCategory, ItemMutationResult};
+use clap::{Parser, Subcommand};
+use serde::Deserialize;
+use std::fs::{self, File};
+use std::os::unix::process::CommandExt;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use uuid::Uuid;
+
+#[derive(Parser, Debug)]
+#[command(
+    name = "nite",
+    version,
+    about = "Pure declarative Minecraft instance launcher for NixOS",
+    subcommand_required = false
+)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
+    /// Quick instance run shortcut (e.g. 'nite default')
+    instance_name: Option<String>,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Launch a declared Minecraft instance inside bubblewrap sandbox
+    Run {
+        /// Name of the instance declared in Nix
+        instance: String,
+    },
+    /// List configured instances
+    List,
+    /// Refresh and lock mod/version dependencies into nite.lock
+    Lock {
+        /// Output path for the lock file
+        #[arg(short, long, default_value = "nite.lock")]
+        output: String,
+    },
+    /// Internal helper to compile server definitions to binary servers.dat
+    FormatServers {
+        /// Input JSON file containing server definitions
+        #[arg(short, long)]
+        input: String,
+        /// Output binary servers.dat path
+        #[arg(short, long)]
+        output: String,
+    },
+}
+
+#[derive(Deserialize, Debug)]
+pub struct InstanceManifest {
+    pub name: String,
+    pub version: String,
+    pub username: String,
+    #[serde(default)]
+    pub uuid: Option<String>,
+    pub java: PathBuf,
+    pub main_class: String,
+    pub classpath: Vec<PathBuf>,
+    pub game_dir: PathBuf,
+    pub assets_dir: PathBuf,
+    pub asset_index: String,
+    #[serde(default = "default_memory")]
+    pub memory: String,
+    #[serde(default)]
+    pub jvm_flags: Vec<String>,
+    #[serde(default)]
+    pub bwrap_bin: Option<PathBuf>,
+    #[serde(default)]
+    pub sandbox_lib: Option<PathBuf>,
+}
+
+fn default_memory() -> String {
+    "4G".to_string()
+}
 
 fn main() {
-    let action = match Cli::parse_action() {
-        Ok(act) => act,
-        Err(err) => {
-            eprintln!();
-            eprintln!("[nite] ERROR: {err}");
-            eprintln!();
-            std::process::exit(1);
+    let cli = Cli::parse();
+
+    let result = match cli.command {
+        Some(Commands::Run { instance }) => launch_instance(&instance),
+        Some(Commands::List) => list_instances(),
+        Some(Commands::Lock { output }) => run_lock(&output),
+        Some(Commands::FormatServers { input, output }) => run_format_servers(&input, &output),
+        None => {
+            if let Some(name) = cli.instance_name {
+                launch_instance(&name)
+            } else {
+                list_instances()
+            }
         }
     };
 
-    let result = match action {
-        Action::Run { instance } => game::launch_instance(&instance),
-        Action::New { name, version, username, fabric } => handle_new_instance(&name, &version, username.as_deref(), fabric),
-        Action::Backup(backup_cmd) => handle_backup(backup_cmd),
-        Action::List => game::list_instances(),
-        Action::Clean => game::clean_unused_data(),
-        Action::Auth => auth::login().map(|_| ()),
-        Action::Search { query } => handle_search(&query),
-        Action::InstanceAction { instance, action } => handle_instance_action(&instance, action),
-    };
-
-    if let Err(err) = result {
-        eprintln!();
-        eprintln!("[nite] ERROR: {err}");
-        eprintln!();
+    if let Err(e) = result {
+        eprintln!("\n[nite] ERROR: {e}\n");
         std::process::exit(1);
     }
 }
 
-fn handle_new_instance(
-    name: &str,
-    version: &str,
-    username: Option<&str>,
-    fabric: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let path = config::create_instance(name, version, fabric, username)?;
-    println!("[nite] Created new instance '{name}' (Minecraft {version}, Fabric: {fabric}) in {}", path.display());
-    println!("[nite] Run 'nite run {name}' to launch.");
-    Ok(())
+fn find_manifest(instance: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    if let Ok(explicit) = std::env::var("NITE_INSTANCE_MANIFEST") {
+        let p = PathBuf::from(explicit);
+        if p.exists() {
+            return Ok(p);
+        }
+    }
+
+    let xdg = xdg::BaseDirectories::with_prefix("nite");
+    let mut candidates = Vec::new();
+
+    if let Some(data) = xdg.get_data_home() {
+        candidates.push(data.join("instances").join(format!("{instance}.json")));
+    }
+    candidates.push(PathBuf::from("/etc/nite/instances").join(format!("{instance}.json")));
+    candidates.push(PathBuf::from("instances").join(format!("{instance}.json")));
+
+    for c in candidates {
+        if c.exists() {
+            return Ok(c);
+        }
+    }
+
+    Err(format!(
+        "instance '{instance}' manifest not found. Make sure it is declared in your Nix configuration."
+    ).into())
 }
 
-fn handle_backup(cmd: BackupCommands) -> Result<(), Box<dyn std::error::Error>> {
-    match cmd {
-        BackupCommands::Create { instance, output, worlds_only, screenshots_only } => {
-            let include_saves = !screenshots_only;
-            let include_screenshots = !worlds_only;
-            let dest = game::backup::create_backup(&instance, include_saves, include_screenshots, output.as_deref())?;
-            println!("[nite] Backup created at: {}", dest.display());
-            Ok(())
-        }
-        BackupCommands::Restore { instance, archive } => {
-            game::backup::restore_backup(&instance, &archive)?;
-            println!("[nite] Restored backup '{}' into instance '{instance}'", archive);
-            Ok(())
-        }
-    }
+fn generate_offline_uuid(username: &str) -> String {
+    let ns = Uuid::nil();
+    let name_bytes = format!("OfflinePlayer:{username}");
+    Uuid::new_v3(&ns, name_bytes.as_bytes()).to_string()
 }
 
-fn handle_search(query: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let hits = game::modrinth::search_mods(query)?;
-    if hits.is_empty() {
-        println!("[nite] No mods found matching '{query}'.");
-        return Ok(());
-    }
-
-    println!("Found {} mod(s) matching '{query}':\n", hits.len());
-    for hit in hits {
-        let versions_str = if hit.versions.is_empty() {
-            "none".to_string()
-        } else {
-            let sample: Vec<&str> = hit.versions.iter().rev().take(4).map(|s| s.as_str()).collect();
-            sample.join(", ")
-        };
-        let author = hit.author.as_deref().unwrap_or("unknown");
-
-        println!("  • {} ({}) by {}", hit.title, hit.slug, author);
-        println!("    Description: {}", hit.description.trim());
-        println!("    Latest versions: {versions_str}");
-        println!();
-    }
-    Ok(())
-}
-
-fn handle_instance_action(instance: &str, action: InstanceAction) -> Result<(), Box<dyn std::error::Error>> {
-    match action {
-        InstanceAction::Mods { action } => handle_item_action(instance, ItemCategory::Mods, action),
-        InstanceAction::Resourcepacks { action } => handle_item_action(instance, ItemCategory::ResourcePacks, action),
-        InstanceAction::Shaders { action } => handle_item_action(instance, ItemCategory::Shaders, action),
-        InstanceAction::Modpack { source } => {
-            let (path, nix_managed) = config::set_modpack(instance, Some(&source))?;
-            if nix_managed {
-                println!("[nite] Notice: '{}' is managed by Nix (symlink / read-only store path).", path.display());
-                println!("[nite] Add the modpack to instance '{instance}' in your Nix configuration:");
-                println!();
-                println!("    modpack = \"{source}\";");
-            } else {
-                println!("[nite] Set modpack for instance '{instance}' in {}", path.display());
-                println!("[nite] Run 'nite run {instance}' to install and launch.");
-            }
-            Ok(())
-        }
-        InstanceAction::Update => handle_batch_update(instance),
-        InstanceAction::Install { mod_slug, version } => {
-            handle_item_action(instance, ItemCategory::Mods, ItemAction::Install { name: mod_slug, version })
-        }
-        InstanceAction::Remove { mod_slug } => {
-            handle_item_action(instance, ItemCategory::Mods, ItemAction::Remove { name: mod_slug })
-        }
-    }
-}
-
-fn handle_item_action(
-    instance: &str,
-    category: ItemCategory,
-    action: ItemAction,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let conf = config::load_config()?;
-    let inst = conf.instance.iter().find(|i| i.name == instance)
-        .ok_or_else(|| format!("instance '{instance}' not found in configuration"))?;
-
-    let is_mod = category == ItemCategory::Mods;
-
-    match action {
-        ItemAction::Install { name, version } => {
-            let resolved_ver = game::modrinth::resolve_item_version(&name, is_mod, Some(&inst.version), version.as_deref())?;
-            let res = config::install_item(instance, category, &name, Some(resolved_ver.clone()))?;
-            display_mutation_result(res)
-        }
-        ItemAction::Remove { name } => {
-            let res = config::remove_item(instance, category, &name)?;
-            display_mutation_result(res)
-        }
-        ItemAction::Update { name, version } => {
-            let resolved_ver = game::modrinth::resolve_item_version(&name, is_mod, Some(&inst.version), version.as_deref())?;
-            let res = config::update_item(instance, category, &name, Some(resolved_ver.clone()))?;
-            display_mutation_result(res)
-        }
-    }
-}
-
-fn handle_batch_update(instance: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let conf = config::load_config()?;
-    let inst = conf.instance.iter().find(|i| i.name == instance)
-        .ok_or_else(|| format!("instance '{instance}' not found in configuration"))?;
-
-    println!("[nite] Checking updates for instance '{instance}' (Minecraft {})...", inst.version);
-
-    let mod_updates = game::modrinth::check_package_updates(&inst.parsed_mods(), true, &inst.version);
-    let rp_updates = game::modrinth::check_package_updates(&inst.parsed_resourcepacks(), false, &inst.version);
-    let sp_updates = game::modrinth::check_package_updates(&inst.parsed_shaderpacks(), false, &inst.version);
-
-    let mut has_updates = false;
-
-    println!("\nMods:");
-    for (name, current, latest, is_up) in &mod_updates {
-        if *is_up {
-            has_updates = true;
-            println!("  ↑ {name}: {current} -> {latest}");
-        } else {
-            println!("  ✓ {name}: {latest}");
-        }
-    }
-
-    if !rp_updates.is_empty() {
-        println!("\nResource Packs:");
-        for (name, current, latest, is_up) in &rp_updates {
-            if *is_up {
-                has_updates = true;
-                println!("  ↑ {name}: {current} -> {latest}");
-            } else {
-                println!("  ✓ {name}: {latest}");
+fn which_bwrap() -> Option<PathBuf> {
+    if let Ok(path) = std::env::var("PATH") {
+        for dir in path.split(':') {
+            let p = PathBuf::from(dir).join("bwrap");
+            if p.is_file() {
+                return Some(p);
             }
         }
     }
+    None
+}
 
-    if !sp_updates.is_empty() {
-        println!("\nShader Packs:");
-        for (name, current, latest, is_up) in &sp_updates {
-            if *is_up {
-                has_updates = true;
-                println!("  ↑ {name}: {current} -> {latest}");
-            } else {
-                println!("  ✓ {name}: {latest}");
+fn launch_instance(instance: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let manifest_path = find_manifest(instance)?;
+    let file = File::open(&manifest_path)?;
+    let manifest: InstanceManifest = serde_json::from_reader(file)?;
+
+    println!(
+        "[nite] launching pure instance '{}' (Minecraft {}, user '{}')...",
+        manifest.name, manifest.version, manifest.username
+    );
+
+    let uuid = manifest.uuid.unwrap_or_else(|| generate_offline_uuid(&manifest.username));
+
+    // Resolve host mutable data storage directory
+    let xdg = xdg::BaseDirectories::with_prefix("nite");
+    let data_root = xdg.get_data_home()
+        .unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".local/share/nite"))
+        .join("data")
+        .join(&manifest.name);
+
+    let mutable_subdirs = [
+        "saves",
+        "screenshots",
+        "logs",
+        "xaero",
+        "XaeroWorldMap",
+        "XaeroWaypoints",
+    ];
+
+    for sub in &mutable_subdirs {
+        let p = data_root.join(sub);
+        fs::create_dir_all(&p)?;
+    }
+
+    let bwrap_executable = manifest.bwrap_bin
+        .or_else(|| std::env::var("NITE_BWRAP_BIN").ok().map(PathBuf::from))
+        .or_else(which_bwrap)
+        .unwrap_or_else(|| PathBuf::from("/run/current-system/sw/bin/bwrap"));
+
+    let sandbox_lib = manifest.sandbox_lib
+        .or_else(|| std::env::var("NITE_SANDBOX_LIB").ok().map(PathBuf::from))
+        .unwrap_or_else(|| PathBuf::from("/run/current-system/sw/lib/libnite_sandbox.so"));
+
+    let cp_strings: Vec<String> = manifest.classpath.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+    let classpath_joined = cp_strings.join(":");
+
+    let mut cmd = Command::new(&bwrap_executable);
+    cmd.arg("--ro-bind").arg("/").arg("/")
+        .arg("--dev").arg("/dev")
+        .arg("--proc").arg("/proc")
+        .arg("--tmpfs").arg("/tmp")
+        .arg("--ro-bind").arg(&manifest.game_dir).arg(&manifest.game_dir);
+
+    for sub in &mutable_subdirs {
+        let host_p = data_root.join(sub);
+        let guest_p = manifest.game_dir.join(sub);
+        cmd.arg("--bind").arg(&host_p).arg(&guest_p);
+    }
+
+    if sandbox_lib.exists() {
+        cmd.env("LD_PRELOAD", &sandbox_lib);
+    }
+    cmd.env("NITE_GAME_DIR", &manifest.game_dir);
+    cmd.env("NITE_MUTABLE_DIRS", "saves:screenshots:logs:xaero:XaeroWorldMap:XaeroWaypoints");
+
+    // Pass Java command line inside bubblewrap
+    cmd.arg(&manifest.java)
+        .arg(format!("-Xms{}", manifest.memory))
+        .arg(format!("-Xmx{}", manifest.memory));
+
+    for flag in &manifest.jvm_flags {
+        cmd.arg(flag);
+    }
+
+    cmd.arg("-cp").arg(classpath_joined)
+        .arg(&manifest.main_class)
+        .arg("--version").arg(&manifest.version)
+        .arg("--gameDir").arg(&manifest.game_dir)
+        .arg("--assetsDir").arg(&manifest.assets_dir)
+        .arg("--assetIndex").arg(&manifest.asset_index)
+        .arg("--username").arg(&manifest.username)
+        .args([
+            "--uuid",
+            &uuid,
+            "--accessToken",
+            "0",
+            "--userType",
+            "legacy",
+            "--versionType",
+            "release",
+        ]);
+
+    let err = cmd.exec();
+    Err(format!("failed to execute bubblewrap '{:?}': {}", bwrap_executable, err).into())
+}
+
+fn list_instances() -> Result<(), Box<dyn std::error::Error>> {
+    let xdg = xdg::BaseDirectories::with_prefix("nite");
+    let mut found = Vec::new();
+
+    let dirs = [
+        xdg.get_data_home().map(|p| p.join("instances")),
+        Some(PathBuf::from("/etc/nite/instances")),
+    ];
+
+    for d in dirs.into_iter().flatten() {
+        if let Ok(entries) = fs::read_dir(d) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.extension().and_then(|e| e.to_str()) == Some("json") {
+                    if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
+                        if !found.contains(&stem.to_string()) {
+                            found.push(stem.to_string());
+                        }
+                    }
+                }
             }
         }
     }
 
-    if has_updates {
-        println!("\nTo update pinned versions, run 'nite {instance} mods update <name> -v <version>'.");
+    if found.is_empty() {
+        println!("No instances configured. Declare them in your Nix configuration.");
     } else {
-        println!("\nAll packages are up to date.");
+        println!("Configured Minecraft instances:");
+        for name in found {
+            println!("  • {name}");
+        }
     }
-
     Ok(())
 }
 
-fn display_mutation_result(res: ItemMutationResult) -> Result<(), Box<dyn std::error::Error>> {
-    match res {
-        ItemMutationResult::Mutated { config_path, instance_name, category, action, name, version } => {
-            let cat_name = category.display_name();
-            let action_verb = match action {
-                "install" => "Installed",
-                "remove" => "Removed",
-                "update" => "Updated",
-                _ => "Modified",
-            };
-            if let Some(ref ver) = version {
-                println!("[nite] {action_verb} {cat_name} '{name}' (version {ver}) for instance '{instance_name}' in {}", config_path.display());
-            } else {
-                println!("[nite] {action_verb} {cat_name} '{name}' for instance '{instance_name}' in {}", config_path.display());
-            }
-            println!("[nite] Run 'nite run {instance_name}' to synchronize and launch.");
-        }
-        ItemMutationResult::NixManaged { config_path, instance_name, category, action, name, version } => {
-            let cat_key = category.config_key();
-            let cat_name = category.display_name();
-            println!("[nite] Notice: '{}' is managed by Nix (symlink / read-only store path).", config_path.display());
-            match action {
-                "install" => {
-                    println!("[nite] Add {cat_name} '{name}' to instance '{instance_name}' in your Nix configuration:");
-                    println!();
-                    println!("    {cat_key} = [");
-                    println!("      # ...");
-                    if let Some(ref ver) = version {
-                        println!("      {{ name = \"{name}\"; version = \"{ver}\"; }},");
-                    } else {
-                        println!("      \"{name}\",");
-                    }
-                    println!("    ];");
-                }
-                "remove" => {
-                    println!("[nite] Remove {cat_name} '{name}' from instance '{instance_name}' in your Nix configuration.");
-                }
-                "update" => {
-                    println!("[nite] {cat_name} '{name}' is declared in instance '{instance_name}'.");
-                    if let Some(ref ver) = version {
-                        println!("       Target version resolved: {ver}");
-                        println!("       Update {{ name = \"{name}\"; version = \"{ver}\"; }} in your Nix configuration.");
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
+fn run_lock(output: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let specs = lock::discover_specs();
+    lock::lock_instances(&specs, Path::new(output))
+}
+
+fn run_format_servers(input: &str, output: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let content = fs::read_to_string(input)?;
+    let servers: Vec<servers::ServerEntry> = serde_json::from_str(&content)?;
+    let bytes = servers::encode_servers_dat(&servers);
+    fs::write(output, bytes)?;
+    println!("[nite] wrote binary servers.dat to {output}");
     Ok(())
 }
