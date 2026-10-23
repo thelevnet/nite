@@ -131,62 +131,6 @@ let
     else
       { instances = {}; };
 
-  resolveMod = instName: item:
-    if lib.isDerivation item then { name = item.name; path = item; }
-    else if builtins.isPath item then { name = baseNameOf item; path = item; }
-    else if builtins.isString item then
-      let
-        entries = lockData.instances.${instName}.mods or [];
-        match = lib.findFirst (e: e.name == item) null entries;
-      in
-        if match != null then {
-          name = match.filename;
-          path = pkgs.fetchurl {
-            name = match.filename;
-            url = match.url;
-            sha512 = match.sha512;
-          };
-        }
-        else throw "nite: mod '${item}' for instance '${instName}' not found in lockfile."
-    else throw "nite: invalid mod definition";
-
-  resolveResourcepack = instName: item:
-    if lib.isDerivation item then { name = item.name; path = item; }
-    else if builtins.isPath item then { name = baseNameOf item; path = item; }
-    else if builtins.isString item then
-      let
-        entries = lockData.instances.${instName}.resourcepacks or [];
-        match = lib.findFirst (e: e.name == item) null entries;
-      in
-        if match != null then {
-          name = match.filename;
-          path = pkgs.fetchurl {
-            name = match.filename;
-            url = match.url;
-            sha512 = match.sha512;
-          };
-        }
-        else throw "nite: resourcepack '${item}' for instance '${instName}' not found in lockfile."
-    else throw "nite: invalid resourcepack definition";
-
-  resolveShaderpack = instName: item:
-    if lib.isDerivation item then { name = item.name; path = item; }
-    else if builtins.isPath item then { name = baseNameOf item; path = item; }
-    else if builtins.isString item then
-      let
-        entries = lockData.instances.${instName}.shaderpacks or [];
-        match = lib.findFirst (e: e.name == item) null entries;
-      in
-        if match != null then {
-          name = match.filename;
-          path = pkgs.fetchurl {
-            name = match.filename;
-            url = match.url;
-            sha512 = match.sha512;
-          };
-        }
-        else throw "nite: shaderpack '${item}' for instance '${instName}' not found in lockfile."
-    else throw "nite: invalid shaderpack definition";
 
   instanceSubmodule = { name, ... }: {
     options = {
@@ -339,41 +283,71 @@ let
 
   compileInstanceFiles = inst:
     let
-      # Auto-include mods declared in modsConfig
-      allModKeys = lib.unique (
-        (map (m: if builtins.isString m then m else m.name) inst.mods)
-        ++ (lib.attrNames inst.modsConfig)
-      );
+      lockedInst = lockData.instances.${inst.name} or null;
 
-      # Mods
-      modEntries = map (m:
-        let
-          resolved = resolveMod inst.name m;
-        in {
-          target = "mods/${resolved.name}";
-          source = resolved.path;
-        }
-      ) allModKeys;
+      # All locked mods (including transitive dependencies resolved by nite lock)
+      lockedModEntries =
+        if lockedInst != null && (lockedInst.mods or []) != [] then
+          map (m: {
+            target = "mods/${m.filename}";
+            source = pkgs.fetchurl {
+              name = m.filename;
+              url = m.url;
+              sha512 = m.sha512;
+            };
+          }) lockedInst.mods
+        else [];
+
+      # Explicit custom mod derivations or local paths
+      extraModEntries = lib.concatMap (m:
+        if lib.isDerivation m then [ { target = "mods/${m.name}"; source = m; } ]
+        else if builtins.isPath m then [ { target = "mods/${baseNameOf m}"; source = m; } ]
+        else []
+      ) inst.mods;
+
+      modEntries = lockedModEntries ++ extraModEntries;
 
       # Resource packs
-      rpEntries = map (r:
-        let
-          resolved = resolveResourcepack inst.name r;
-        in {
-          target = "resourcepacks/${resolved.name}";
-          source = resolved.path;
-        }
+      lockedRpEntries =
+        if lockedInst != null && (lockedInst.resourcepacks or []) != [] then
+          map (rp: {
+            target = "resourcepacks/${rp.filename}";
+            source = pkgs.fetchurl {
+              name = rp.filename;
+              url = rp.url;
+              sha512 = rp.sha512;
+            };
+          }) lockedInst.resourcepacks
+        else [];
+
+      extraRpEntries = lib.concatMap (rp:
+        if lib.isDerivation rp then [ { target = "resourcepacks/${rp.name}"; source = rp; } ]
+        else if builtins.isPath rp then [ { target = "resourcepacks/${baseNameOf rp}"; source = rp; } ]
+        else []
       ) inst.resourcepacks;
 
+      rpEntries = lockedRpEntries ++ extraRpEntries;
+
       # Shader packs
-      spEntries = map (s:
-        let
-          resolved = resolveShaderpack inst.name s;
-        in {
-          target = "shaderpacks/${resolved.name}";
-          source = resolved.path;
-        }
+      lockedSpEntries =
+        if lockedInst != null && (lockedInst.shaderpacks or []) != [] then
+          map (sp: {
+            target = "shaderpacks/${sp.filename}";
+            source = pkgs.fetchurl {
+              name = sp.filename;
+              url = sp.url;
+              sha512 = sp.sha512;
+            };
+          }) lockedInst.shaderpacks
+        else [];
+
+      extraSpEntries = lib.concatMap (sp:
+        if lib.isDerivation sp then [ { target = "shaderpacks/${sp.name}"; source = sp; } ]
+        else if builtins.isPath sp then [ { target = "shaderpacks/${baseNameOf sp}"; source = sp; } ]
+        else []
       ) inst.shaderpacks;
+
+      spEntries = lockedSpEntries ++ extraSpEntries;
 
       # Mod configs
       modConfigEntries = lib.concatLists (lib.mapAttrsToList (modName: modVal:
