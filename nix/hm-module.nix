@@ -163,10 +163,12 @@ let
 
       fabricLibs =
         if inst.fabric && lockedInst != null && (lockedInst.fabric_loader or null) != null then
-          map (l: pkgs.fetchurl {
+          map (l: pkgs.fetchurl ({
             name = l.name;
             url = l.url;
-          }) lockedInst.fabric_loader.libraries
+          } // lib.optionalAttrs ((l.sha512 or null) != null) { sha512 = l.sha512; }
+            // lib.optionalAttrs ((l.sha1 or null) != null && (l.sha512 or null) == null) { sha1 = l.sha1; }))
+          lockedInst.fabric_loader.libraries
         else [];
 
       classpath = lib.filter (x: x != null) ([ clientJar ] ++ vanillaLibs ++ fabricLibs);

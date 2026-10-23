@@ -227,6 +227,10 @@ struct FabricProfile {
 struct FabricLibItem {
     name: String,
     url: String,
+    #[serde(default)]
+    sha1: Option<String>,
+    #[serde(default)]
+    sha512: Option<String>,
 }
 
 pub fn resolve_fabric(client: &reqwest::blocking::Client, mc_version: &str) -> Result<LockedFabric, Box<dyn std::error::Error>> {
@@ -250,11 +254,27 @@ pub fn resolve_fabric(client: &reqwest::blocking::Client, mc_version: &str) -> R
         let name = parts[1];
         let version = parts[2];
         let file_url = format!("{}/{group}/{name}/{version}/{name}-{version}.jar", lib.url.trim_end_matches('/'));
+
+        let mut sha1 = lib.sha1;
+        let sha512 = lib.sha512;
+        if sha1.is_none() && sha512.is_none() {
+            if let Ok(res) = client.get(format!("{file_url}.sha1")).send() {
+                if res.status().is_success() {
+                    if let Ok(text) = res.text() {
+                        let s = text.trim();
+                        if !s.is_empty() && s.len() == 40 {
+                            sha1 = Some(s.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
         libraries.push(DownloadFile {
             name: lib.name,
             url: file_url,
-            sha1: None,
-            sha512: None,
+            sha1,
+            sha512,
         });
     }
 
