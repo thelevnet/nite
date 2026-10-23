@@ -355,6 +355,9 @@ let
           hasExplicit =
             (modVal.json or null) != null || (modVal.toml or null) != null || (modVal.properties or null) != null ||
             (modVal.text or null) != null || (modVal.lines or null) != null || (modVal.source or null) != null;
+
+          ensureConfigPrefix = p:
+            if lib.hasPrefix "config/" p then p else "config/${p}";
         in
         if hasExplicit then
           let
@@ -363,33 +366,55 @@ let
                 if modVal.properties ? settings then modVal.properties.settings
                 else modVal.properties
               else null;
-            propsTarget =
+            rawPropsTarget =
               if modVal.properties ? target && modVal.properties.target != null then modVal.properties.target
               else if (modVal.target or null) != null then modVal.target
-              else "config/${modName}.properties";
+              else "${modName}.properties";
+            propsTarget = ensureConfigPrefix rawPropsTarget;
+
+            jsonTarget = ensureConfigPrefix (
+              if (modVal.target or null) != null then modVal.target
+              else if modName == "sodium" then "sodium-options.json"
+              else "${modName}.json"
+            );
+
+            tomlTarget = ensureConfigPrefix (
+              if (modVal.target or null) != null then modVal.target
+              else "${modName}.toml"
+            );
+
+            txtTarget = ensureConfigPrefix (
+              if (modVal.target or null) != null then modVal.target
+              else "${modName}.txt"
+            );
+
+            sourceTarget = ensureConfigPrefix (
+              if (modVal.target or null) != null then modVal.target
+              else modName
+            );
           in
             lib.optional ((modVal.json or null) != null) {
-              target = if (modVal.target or null) != null then modVal.target else "config/${modName}.json";
-              source = jsonFormat.generate "${modName}.json" modVal.json;
+              target = jsonTarget;
+              source = jsonFormat.generate (baseNameOf jsonTarget) modVal.json;
             } ++
             lib.optional ((modVal.toml or null) != null) {
-              target = if (modVal.target or null) != null then modVal.target else "config/${modName}.toml";
-              source = tomlFormat.generate "${modName}.toml" modVal.toml;
+              target = tomlTarget;
+              source = tomlFormat.generate (baseNameOf tomlTarget) modVal.toml;
             } ++
             lib.optional (propsSettings != null) {
               target = propsTarget;
               source = generateProperties (baseNameOf propsTarget) propsSettings;
             } ++
             lib.optional ((modVal.text or null) != null) {
-              target = if (modVal.target or null) != null then modVal.target else "config/${modName}.txt";
-              source = pkgs.writeText "${modName}.txt" modVal.text;
+              target = txtTarget;
+              source = pkgs.writeText (baseNameOf txtTarget) modVal.text;
             } ++
             lib.optional ((modVal.lines or null) != null) {
-              target = if (modVal.target or null) != null then modVal.target else "config/${modName}.txt";
-              source = pkgs.writeText "${modName}.txt" (lib.concatStringsSep "\n" modVal.lines + "\n");
+              target = txtTarget;
+              source = pkgs.writeText (baseNameOf txtTarget) (lib.concatStringsSep "\n" modVal.lines + "\n");
             } ++
             lib.optional ((modVal.source or null) != null) {
-              target = if (modVal.target or null) != null then modVal.target else "config/${modName}";
+              target = sourceTarget;
               source = modVal.source;
             }
         else
