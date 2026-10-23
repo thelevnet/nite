@@ -37,6 +37,9 @@ enum Commands {
     List,
     /// Refresh and lock mod/version dependencies into nite.lock
     Lock {
+        /// Optional input JSON or Nix file containing instance specifications
+        #[arg(short, long)]
+        input: Option<String>,
         /// Output path for the lock file
         #[arg(short, long, default_value = "nite.lock")]
         output: String,
@@ -85,7 +88,7 @@ fn main() {
     let result = match cli.command {
         Some(Commands::Run { instance }) => launch_instance(&instance),
         Some(Commands::List) => list_instances(),
-        Some(Commands::Lock { output }) => run_lock(&output),
+        Some(Commands::Lock { input, output }) => run_lock(input.as_deref(), &output),
         Some(Commands::FormatServers { input, output }) => run_format_servers(&input, &output),
         None => {
             if let Some(name) = cli.instance_name {
@@ -337,8 +340,11 @@ fn list_instances() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn run_lock(output: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let specs = lock::discover_specs();
+fn run_lock(input: Option<&str>, output: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let specs = match input {
+        Some(inp) => lock::load_specs_from_path(Path::new(inp))?,
+        None => lock::discover_specs(),
+    };
     lock::lock_instances(&specs, Path::new(output))
 }
 

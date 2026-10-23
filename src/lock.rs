@@ -433,49 +433,102 @@ pub fn lock_instances(specs: &[InstanceSpec], out_path: &Path) -> Result<(), Box
     Ok(())
 }
 
+/// Loads instance specifications from a JSON or Nix file path.
+pub fn load_specs_from_path(path: &Path) -> Result<Vec<InstanceSpec>, Box<dyn std::error::Error>> {
+    if path.extension().and_then(|s| s.to_str()) == Some("json") {
+        let content = fs::read_to_string(path)?;
+        let specs: Vec<InstanceSpec> = serde_json::from_str(&content)?;
+        return Ok(specs);
+    }
+
+    if path.extension().and_then(|s| s.to_str()) == Some("nix") {
+        let expr = format!(
+            "let f = import {} {{}}; in map (i: {{ inherit (i) name version; fabric = i.fabric or true; mods = i.mods or []; resourcepacks = i.resourcepacks or []; shaderpacks = i.shaderpacks or []; }}) f.modules.nite.instances",
+            path.display()
+        );
+        let output = std::process::Command::new("nix")
+            .args(["eval", "--impure", "--json", "--expr", &expr])
+            .output()?;
+        if output.status.success() {
+            let specs: Vec<InstanceSpec> = serde_json::from_slice(&output.stdout)?;
+            return Ok(specs);
+        } else {
+            return Err(format!("nix eval failed: {}", String::from_utf8_lossy(&output.stderr)).into());
+        }
+    }
+
+    Err(format!("unsupported spec file format: {}", path.display()).into())
+}
+
 /// Discovers instance specifications by scanning local Nix files or existing lockfiles.
 pub fn discover_specs() -> Vec<InstanceSpec> {
-    // Check known paths for instance definitions
-    let candidates = [
-        PathBuf::from("nite.lock"),
-        PathBuf::from("/home/lev/nixos/nite.lock"),
-        PathBuf::from("modules/home/nite.nix"),
+    // 1. Try discovering declared instances from Nix configurations first
+    let nix_candidates = [
+        PathBuf::from("/nixos/modules/home/nite.nix"),
         PathBuf::from("/home/lev/nixos/modules/home/nite.nix"),
+        PathBuf::from("modules/home/nite.nix"),
     ];
 
-    for path in &candidates {
+    for path in &nix_candidates {
+        if path.exists() {
+            if let Ok(specs) = load_specs_from_path(path) {
+                if !specs.is_empty() {
+                    return specs;
+                }
+            }
+        }
+    }
+
+    // 2. Try reading from existing nite.lock
+    let lock_candidates = [
+        PathBuf::from("/nixos/nite.lock"),
+        PathBuf::from("/home/lev/nixos/nite.lock"),
+        PathBuf::from("nite.lock"),
+    ];
+
+    for path in &lock_candidates {
         if path.exists() {
             if let Ok(content) = fs::read_to_string(path) {
-                if path.extension().and_then(|s| s.to_str()) == Some("lock") {
-                    if let Ok(lock) = serde_json::from_str::<NiteLock>(&content) {
-                        return lock.instances.into_iter().map(|(name, inst)| InstanceSpec {
-                            name,
-                            version: inst.version,
-                            fabric: inst.fabric,
-                            mods: inst.mods.into_iter().map(|m| m.name).collect(),
-                            resourcepacks: inst.resourcepacks.into_iter().map(|r| r.name).collect(),
-                            shaderpacks: inst.shaderpacks.into_iter().map(|s| s.name).collect(),
-                        }).collect();
+                if let Ok(lock) = serde_json::from_str::<NiteLock>(&content) {
+                    let specs: Vec<InstanceSpec> = lock.instances.into_iter().map(|(name, inst)| InstanceSpec {
+                        name,
+                        version: inst.version,
+                        fabric: inst.fabric,
+                        mods: inst.mods.into_iter().map(|m| m.name).collect(),
+                        resourcepacks: inst.resourcepacks.into_iter().map(|r| r.name).collect(),
+                        shaderpacks: inst.shaderpacks.into_iter().map(|s| s.name).collect(),
+                    }).collect();
+                    if !specs.is_empty() {
+                        return specs;
                     }
                 }
             }
         }
     }
 
-    // Default to the user's primary instances if not found
+    // 3. Fallback to 26.1.2 default spec
     vec![
         InstanceSpec {
             name: "default".to_string(),
-            version: "1.21.1".to_string(), // 26.1.2 corresponds to 1.21.1 / 1.21
+            version: "26.1.2".to_string(),
             fabric: true,
             mods: vec![
                 "sodium-extra".into(), "lithium".into(), "iris".into(), "patpat".into(),
                 "modmenu".into(), "appleskin".into(), "continuity".into(), "customskinloader".into(),
                 "elytrapitch".into(), "ferrite-core".into(), "freecam".into(), "shulkerboxtooltip".into(),
-                "ukus-armor-hud".into(), "sodium".into(), "xaeros-world-map".into(), "fullbright".into(),
+                "ukus-armor-hud".into(), "waylandcraft".into(), "sodium".into(), "xaeros-world-map".into(),
+                "fullbright".into(), "lighty".into(),
             ],
-            resourcepacks: vec!["fresh-food".into(), "fresh-music-discs".into(), "mattpack".into()],
-            shaderpacks: vec!["complementary-unbound".into(), "photon-shader".into()],
+            resourcepacks: vec!["fresh-food".into(), "fresh-music-discs".into()],
+            shaderpacks: vec!["complementary-reimagined".into()],
+        },
+        InstanceSpec {
+            name: "second".to_string(),
+            version: "26.1.2".to_string(),
+            fabric: true,
+            mods: vec![],
+            resourcepacks: vec![],
+            shaderpacks: vec![],
         }
     ]
 }
