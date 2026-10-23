@@ -568,53 +568,7 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    home.packages = [ cfg.package pkgs.libxkbcommon ]
-      ++ (lib.mapAttrsToList (name: _:
-        pkgs.writeShellScriptBin "nite-${name}" ''
-          exec ${cfg.package}/bin/nite run "${name}" "$@"
-        ''
-      ) cfg.instances)
-      ++ [
-        (pkgs.writeShellScriptBin "nite-menu" ''
-          set -euo pipefail
-          INSTANCES="${lib.concatStringsSep "\\n" (lib.mapAttrsToList (n: i: "${n} - ${i.meta.displayName}") cfg.instances)}"
-          if command -v fuzzel >/dev/null 2>&1; then
-            CHOSEN=$(echo -e "$INSTANCES" | fuzzel --dmenu -p "Minecraft: " | awk '{print $1}')
-          elif command -v rofi >/dev/null 2>&1; then
-            CHOSEN=$(echo -e "$INSTANCES" | rofi -dmenu -p "Minecraft" | awk '{print $1}')
-          elif command -v wofi >/dev/null 2>&1; then
-            CHOSEN=$(echo -e "$INSTANCES" | wofi --dmenu -p "Minecraft: " | awk '{print $1}')
-          else
-            echo "=== Minecraft Instances ==="
-            echo -e "$INSTANCES"
-            read -rp "Select instance: " CHOSEN
-          fi
-          if [ -n "''${CHOSEN:-}" ]; then
-            exec ${cfg.package}/bin/nite run "$CHOSEN"
-          fi
-        '')
-      ];
-
-    xdg.desktopEntries = lib.mapAttrs' (name: inst:
-      lib.nameValuePair "nite-${name}" {
-        name = inst.meta.displayName;
-        comment = inst.meta.description;
-        icon = inst.meta.icon;
-        categories = inst.meta.categories;
-        exec = "${cfg.package}/bin/nite run ${name}";
-        terminal = false;
-        actions = {
-          "screenshots" = {
-            name = "Open Screenshots";
-            exec = "xdg-open ${config.home.homeDirectory}/.local/share/nite/instances/${name}/screenshots";
-          };
-          "saves" = {
-            name = "Open Saves";
-            exec = "xdg-open ${config.home.homeDirectory}/.local/share/nite/instances/${name}/saves";
-          };
-        };
-      }
-    ) cfg.instances;
+    home.packages = [ cfg.package pkgs.libxkbcommon ];
 
     xdg.dataFile = lib.mapAttrs' (name: inst:
       lib.nameValuePair "nite/instances/${name}.json" {
