@@ -151,7 +151,7 @@ fn which_bwrap() -> Option<PathBuf> {
     None
 }
 
-fn bind_config_dir(src: &Path, dst: &Path, cmd: &mut Command) {
+fn bind_tree_as_files(src: &Path, dst: &Path, cmd: &mut Command) {
     if let Ok(entries) = fs::read_dir(src) {
         for entry in entries.flatten() {
             let src_entry = entry.path();
@@ -159,7 +159,7 @@ fn bind_config_dir(src: &Path, dst: &Path, cmd: &mut Command) {
                 let dst_entry = dst.join(file_name);
                 if src_entry.is_dir() {
                     cmd.arg("--dir").arg(&dst_entry);
-                    bind_config_dir(&src_entry, &dst_entry, cmd);
+                    bind_tree_as_files(&src_entry, &dst_entry, cmd);
                 } else {
                     cmd.arg("--ro-bind").arg(&src_entry).arg(&dst_entry);
                 }
@@ -220,14 +220,45 @@ fn launch_instance(instance: &str) -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::new(&bwrap_executable);
     cmd.arg("--ro-bind").arg("/").arg("/")
         .arg("--dev").arg("/dev")
+        .arg("--dev-bind-try").arg("/dev/dri").arg("/dev/dri")
+        .arg("--dev-bind-try").arg("/dev/input").arg("/dev/input")
         .arg("--proc").arg("/proc")
         .arg("--tmpfs").arg("/tmp")
+        .arg("--bind-try").arg("/tmp/.X11-unix").arg("/tmp/.X11-unix")
         .arg("--dir").arg(&target_game_dir)
         .arg("--chdir").arg(&target_game_dir);
 
-    // Create target game dir config directory on tmpfs
-    let guest_config = target_game_dir.join("config");
-    cmd.arg("--dir").arg(&guest_config);
+    // Bind XDG_RUNTIME_DIR writable for Wayland sockets, shm, and audio
+    if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
+        cmd.arg("--bind-try").arg(&runtime_dir).arg(&runtime_dir);
+    } else {
+        unsafe extern "C" {
+            fn getuid() -> u32;
+        }
+        let uid = unsafe { getuid() };
+        let run_user = format!("/run/user/{uid}");
+        cmd.arg("--bind-try").arg(&run_user).arg(&run_user);
+    }
+
+    let shared_assets = xdg.get_data_home()
+        .unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".local/share/nite"))
+        .join("shared")
+        .join("assets");
+    let _ = fs::create_dir_all(shared_assets.join("indexes"));
+    let _ = fs::create_dir_all(shared_assets.join("objects"));
+
+    let assets_dir = if manifest.assets_dir.exists() {
+        manifest.assets_dir
+    } else {
+        shared_assets
+    };
+
+    if assets_dir.exists() {
+        cmd.arg("--bind-try").arg(&assets_dir).arg(&assets_dir);
+    }
+
+    // Directories whose files should be individual ro-bind mounts to avoid exposing Nix store symlinks
+    let individual_bind_dirs = ["config", "mods", "resourcepacks", "shaderpacks"];
 
     // Ro-bind all entries from the Nix store game_dir into the sandbox target_game_dir
     if let Ok(entries) = fs::read_dir(&manifest.game_dir) {
@@ -235,8 +266,10 @@ fn launch_instance(instance: &str) -> Result<(), Box<dyn std::error::Error>> {
             let p = entry.path();
             if let Some(file_name) = p.file_name() {
                 let name_str = file_name.to_string_lossy();
-                if name_str == "config" {
-                    bind_config_dir(&p, &guest_config, &mut cmd);
+                if individual_bind_dirs.contains(&name_str.as_ref()) {
+                    let guest_sub = target_game_dir.join(file_name);
+                    cmd.arg("--dir").arg(&guest_sub);
+                    bind_tree_as_files(&p, &guest_sub, &mut cmd);
                 } else if mutable_subdirs.contains(&name_str.as_ref()) {
                     // Skip mutable directories as they will be bound from data_root below
                     continue;
@@ -254,19 +287,6 @@ fn launch_instance(instance: &str) -> Result<(), Box<dyn std::error::Error>> {
         let guest_p = target_game_dir.join(sub);
         cmd.arg("--bind").arg(&host_p).arg(&guest_p);
     }
-
-    let assets_dir = if manifest.assets_dir.exists() {
-        manifest.assets_dir
-    } else if let Some(data) = xdg.get_data_home() {
-        let p = data.join("shared").join("assets");
-        if p.exists() {
-            p
-        } else {
-            manifest.assets_dir
-        }
-    } else {
-        manifest.assets_dir
-    };
 
     if sandbox_lib.exists() {
         cmd.env("LD_PRELOAD", &sandbox_lib);

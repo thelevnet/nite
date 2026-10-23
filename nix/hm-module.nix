@@ -197,7 +197,7 @@ let
         asset_index = assetIndexId;
         memory = if inst.memory != null then inst.memory else "4G";
         jvm_flags = [
-          "-Djava.library.path=${lib.makeLibraryPath [ pkgs.libGL pkgs.vulkan-loader pkgs.openal pkgs.udev pkgs.wayland pkgs.libxkbcommon pkgs.libX11 ]}"
+          "-Djava.library.path=${lib.makeLibraryPath [ pkgs.libGL pkgs.vulkan-loader pkgs.openal pkgs.udev pkgs.wayland pkgs.libxkbcommon pkgs.libX11 pkgs.flite ]}"
           "-Dorg.lwjgl.openal.libname=${pkgs.openal}/lib/libopenal.so"
         ];
         bwrap_bin = "${pkgs.bubblewrap}/bin/bwrap";
@@ -331,6 +331,31 @@ in
           source = mkInstanceManifest inst;
         };
       }) cfg.instances
+    ) // (
+      lib.listToAttrs (
+        lib.filter (x: x.value != null) (
+          map (inst:
+            let
+              lockedInst = lockData.instances.${inst.name} or null;
+              assetIdx =
+                if lockedInst != null && (lockedInst.mojang.asset_index or null) != null then
+                  pkgs.fetchurl {
+                    name = "${lockedInst.mojang.asset_index.id}.json";
+                    url = lockedInst.mojang.asset_index.url;
+                    sha1 = lockedInst.mojang.asset_index.sha1;
+                  }
+                else null;
+              assetIdxId =
+                if lockedInst != null && (lockedInst.mojang.asset_index or null) != null then
+                  lockedInst.mojang.asset_index.id
+                else "30";
+            in {
+              name = "nite/shared/assets/indexes/${assetIdxId}.json";
+              value = if assetIdx != null then { source = assetIdx; } else null;
+            }
+          ) cfg.instances
+        )
+      )
     );
   };
 }
