@@ -443,14 +443,18 @@ pub fn load_specs_from_path(path: &Path) -> Result<Vec<InstanceSpec>, Box<dyn st
 
     if path.extension().and_then(|s| s.to_str()) == Some("nix") {
         let expr = format!(
-            "let f = import {} {{}}; in map (i: {{ inherit (i) name version; fabric = i.fabric or true; mods = i.mods or []; resourcepacks = i.resourcepacks or []; shaderpacks = i.shaderpacks or []; }}) f.modules.nite.instances",
+            "let f = import {} {{ pkgs = null; }}; raw = f.modules.nite.instances; insts = if builtins.isAttrs raw then builtins.attrValues (builtins.mapAttrs (name: val: val // {{ inherit name; }}) raw) else raw; in map (i: {{ inherit (i) name version; fabric = i.fabric or true; mods = if builtins.isAttrs (i.mods or []) then builtins.attrNames (builtins.filterAttrs (_: v: v.enable or true) i.mods) else (i.mods or []) ++ builtins.attrNames (i.modsConfig or {{}}); resourcepacks = i.resourcepacks or []; shaderpacks = i.shaderpacks or []; }}) insts",
             path.display()
         );
         let output = std::process::Command::new("nix")
             .args(["eval", "--impure", "--json", "--expr", &expr])
             .output()?;
         if output.status.success() {
-            let specs: Vec<InstanceSpec> = serde_json::from_slice(&output.stdout)?;
+            let mut specs: Vec<InstanceSpec> = serde_json::from_slice(&output.stdout)?;
+            for spec in &mut specs {
+                let mut seen = std::collections::HashSet::new();
+                spec.mods.retain(|m| seen.insert(m.clone()));
+            }
             return Ok(specs);
         } else {
             return Err(format!("nix eval failed: {}", String::from_utf8_lossy(&output.stderr)).into());
