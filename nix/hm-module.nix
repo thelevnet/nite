@@ -199,6 +199,7 @@ let
         jvm_flags = [
           "-Djava.library.path=${lib.makeLibraryPath [ pkgs.libGL pkgs.vulkan-loader pkgs.openal pkgs.udev pkgs.wayland pkgs.libxkbcommon pkgs.libX11 pkgs.flite ]}"
           "-Dorg.lwjgl.openal.libname=${pkgs.openal}/lib/libopenal.so"
+          "-Dglfw.platform=wayland"
         ];
         bwrap_bin = "${pkgs.bubblewrap}/bin/bwrap";
         sandbox_lib = "${cfg.package}/lib/libnite_sandbox.so";

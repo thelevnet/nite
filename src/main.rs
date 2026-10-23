@@ -224,11 +224,10 @@ fn launch_instance(instance: &str) -> Result<(), Box<dyn std::error::Error>> {
         .arg("--dev-bind-try").arg("/dev/input").arg("/dev/input")
         .arg("--proc").arg("/proc")
         .arg("--tmpfs").arg("/tmp")
-        .arg("--bind-try").arg("/tmp/.X11-unix").arg("/tmp/.X11-unix")
         .arg("--dir").arg(&target_game_dir)
         .arg("--chdir").arg(&target_game_dir);
 
-    // Bind XDG_RUNTIME_DIR writable for Wayland sockets, shm, and audio
+    // Bind XDG_RUNTIME_DIR writable for native Wayland sockets, shm, and audio
     if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
         cmd.arg("--bind-try").arg(&runtime_dir).arg(&runtime_dir);
     } else {
@@ -239,6 +238,16 @@ fn launch_instance(instance: &str) -> Result<(), Box<dyn std::error::Error>> {
         let run_user = format!("/run/user/{uid}");
         cmd.arg("--bind-try").arg(&run_user).arg(&run_user);
     }
+
+    // Export pure Wayland native environment variables into sandbox
+    if let Ok(wayland_display) = std::env::var("WAYLAND_DISPLAY") {
+        cmd.env("WAYLAND_DISPLAY", wayland_display);
+    }
+    cmd.env("XDG_SESSION_TYPE", "wayland");
+    cmd.env("GDK_BACKEND", "wayland");
+    cmd.env("QT_QPA_PLATFORM", "wayland");
+    cmd.env("SDL_VIDEODRIVER", "wayland");
+    cmd.env("CLUTTER_BACKEND", "wayland");
 
     let shared_assets = xdg.get_data_home()
         .unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".local/share/nite"))
