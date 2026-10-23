@@ -87,6 +87,7 @@ let
 
   # Mod Config Submodule
   modConfigSubmodule = { name, ... }: {
+    freeformType = lib.types.attrsOf lib.types.anything;
     options = {
       target = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
@@ -294,7 +295,7 @@ let
       # Accepts { json = ...; toml = ...; properties = ...; lines = ...; text = ...; source = ...; }
       # Automatically supports legacy format: { continuity = { connected_textures = true; }; }
       modsConfig = lib.mkOption {
-        type = lib.types.attrsOf (lib.types.either modConfigSubmodule (lib.types.attrsOf (lib.types.oneOf [ lib.types.bool lib.types.int lib.types.float lib.types.str ])));
+        type = lib.types.attrsOf (lib.types.submodule modConfigSubmodule);
         default = {};
         description = "Declarative mod configurations placed in config/.";
       };
@@ -322,11 +323,15 @@ let
 
       # Multiplayer servers
       servers = lib.mkOption {
-        type = lib.types.coercedTo
+        type = lib.types.either
           (lib.types.listOf (lib.types.submodule serverSubmodule))
-          (list: lib.listToAttrs (map (s: lib.nameValuePair s.name s) list))
           (lib.types.attrsOf (lib.types.submodule serverSubmodule));
         default = {};
+        apply = v:
+          if builtins.isList v then
+            lib.listToAttrs (map (s: lib.nameValuePair s.name s) v)
+          else
+            v;
         description = "Multiplayer servers list.";
       };
     };
@@ -372,49 +377,56 @@ let
 
       # Mod configs
       modConfigEntries = lib.concatLists (lib.mapAttrsToList (modName: modVal:
-        if modVal ? json || modVal ? toml || modVal ? properties || modVal ? text || modVal ? lines || modVal ? source then
+        let
+          hasExplicit =
+            (modVal.json or null) != null || (modVal.toml or null) != null || (modVal.properties or null) != null ||
+            (modVal.text or null) != null || (modVal.lines or null) != null || (modVal.source or null) != null;
+        in
+        if hasExplicit then
           let
             propsSettings =
-              if modVal.properties != null then
+              if (modVal.properties or null) != null then
                 if modVal.properties ? settings then modVal.properties.settings
                 else modVal.properties
               else null;
             propsTarget =
               if modVal.properties ? target && modVal.properties.target != null then modVal.properties.target
-              else if modVal.target != null then modVal.target
+              else if (modVal.target or null) != null then modVal.target
               else "config/${modName}.properties";
           in
-            lib.optional (modVal.json != null) {
-              target = if modVal.target != null then modVal.target else "config/${modName}.json";
+            lib.optional ((modVal.json or null) != null) {
+              target = if (modVal.target or null) != null then modVal.target else "config/${modName}.json";
               source = jsonFormat.generate "${modName}.json" modVal.json;
             } ++
-            lib.optional (modVal.toml != null) {
-              target = if modVal.target != null then modVal.target else "config/${modName}.toml";
+            lib.optional ((modVal.toml or null) != null) {
+              target = if (modVal.target or null) != null then modVal.target else "config/${modName}.toml";
               source = tomlFormat.generate "${modName}.toml" modVal.toml;
             } ++
             lib.optional (propsSettings != null) {
               target = propsTarget;
               source = generateProperties (baseNameOf propsTarget) propsSettings;
             } ++
-            lib.optional (modVal.text != null) {
-              target = if modVal.target != null then modVal.target else "config/${modName}.txt";
+            lib.optional ((modVal.text or null) != null) {
+              target = if (modVal.target or null) != null then modVal.target else "config/${modName}.txt";
               source = pkgs.writeText "${modName}.txt" modVal.text;
             } ++
-            lib.optional (modVal.lines != null) {
-              target = if modVal.target != null then modVal.target else "config/${modName}.txt";
+            lib.optional ((modVal.lines or null) != null) {
+              target = if (modVal.target or null) != null then modVal.target else "config/${modName}.txt";
               source = pkgs.writeText "${modName}.txt" (lib.concatStringsSep "\n" modVal.lines + "\n");
             } ++
-            lib.optional (modVal.source != null) {
-              target = if modVal.target != null then modVal.target else "config/${modName}";
+            lib.optional ((modVal.source or null) != null) {
+              target = if (modVal.target or null) != null then modVal.target else "config/${modName}";
               source = modVal.source;
             }
         else
           # Legacy fallback: raw key-value attrset
           let
-            jsonContent = jsonFormat.generate "${modName}.json" modVal;
-            propsContent = generateProperties "${modName}.properties" modVal;
+            filteredAttrs = lib.filterAttrs (k: v: !lib.elem k [ "target" "source" "text" "lines" "json" "toml" "properties" ] && v != null) modVal;
+            jsonContent = jsonFormat.generate "${modName}.json" filteredAttrs;
+            propsContent = generateProperties "${modName}.properties" filteredAttrs;
           in
-            if modName == "iris" then [ { target = "config/iris.properties"; source = propsContent; } ]
+            if filteredAttrs == {} then []
+            else if modName == "iris" then [ { target = "config/iris.properties"; source = propsContent; } ]
             else if modName == "continuity" then [ { target = "config/continuity/continuity.properties"; source = propsContent; } ]
             else [ { target = "config/${modName}.json"; source = jsonContent; } ]
       ) inst.modsConfig);
@@ -568,11 +580,15 @@ in
     };
 
     instances = lib.mkOption {
-      type = lib.types.coercedTo
+      type = lib.types.either
         (lib.types.listOf (lib.types.submodule instanceSubmodule))
-        (list: lib.listToAttrs (map (i: lib.nameValuePair i.name i) list))
         (lib.types.attrsOf (lib.types.submodule instanceSubmodule));
       default = {};
+      apply = v:
+        if builtins.isList v then
+          lib.listToAttrs (map (i: lib.nameValuePair i.name i) v)
+        else
+          v;
       description = "Declarative Minecraft instances.";
     };
   };
