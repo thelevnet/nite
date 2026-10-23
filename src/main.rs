@@ -192,8 +192,6 @@ fn launch_instance(instance: &str) -> Result<(), Box<dyn std::error::Error>> {
         "screenshots",
         "logs",
         "xaero",
-        "XaeroWorldMap",
-        "XaeroWaypoints",
         ".fabric",
         "CustomSkinLoader",
     ];
