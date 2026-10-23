@@ -174,8 +174,8 @@ fn launch_instance(instance: &str) -> Result<(), Box<dyn std::error::Error>> {
     let manifest: InstanceManifest = serde_json::from_reader(file)?;
 
     println!(
-        "[nite] launching pure instance '{}' (Minecraft {}, user '{}')...",
-        manifest.name, manifest.version, manifest.username
+        "[nite] launching instance {}...",
+        manifest.name
     );
 
     let uuid = manifest.uuid.unwrap_or_else(|| generate_offline_uuid(&manifest.username));
@@ -299,7 +299,7 @@ fn launch_instance(instance: &str) -> Result<(), Box<dyn std::error::Error>> {
         cmd.env("LD_PRELOAD", &sandbox_lib);
     }
     cmd.env("NITE_GAME_DIR", &target_game_dir);
-    cmd.env("NITE_MUTABLE_DIRS", "saves:screenshots:logs:xaero:XaeroWorldMap:XaeroWaypoints:.fabric:CustomSkinLoader");
+    cmd.env("NITE_MUTABLE_DIRS", "saves:screenshots:logs:xaero:.fabric:CustomSkinLoader");
 
     // Pass Java command line inside bubblewrap
     cmd.arg(&manifest.java)
@@ -359,9 +359,9 @@ fn list_instances() -> Result<(), Box<dyn std::error::Error>> {
     if found.is_empty() {
         println!("No instances configured. Declare them in your Nix configuration.");
     } else {
-        println!("Configured Minecraft instances:");
+        println!("Instances:");
         for name in found {
-            println!("  • {name}");
+            println!("{name}");
         }
     }
     Ok(())
