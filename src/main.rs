@@ -193,23 +193,50 @@ fn launch_instance(instance: &str) -> Result<(), Box<dyn std::error::Error>> {
     let cp_strings: Vec<String> = manifest.classpath.iter().map(|p| p.to_string_lossy().into_owned()).collect();
     let classpath_joined = cp_strings.join(":");
 
+    let target_game_dir = PathBuf::from("/tmp/nite-game");
+
     let mut cmd = Command::new(&bwrap_executable);
     cmd.arg("--ro-bind").arg("/").arg("/")
         .arg("--dev").arg("/dev")
         .arg("--proc").arg("/proc")
         .arg("--tmpfs").arg("/tmp")
-        .arg("--ro-bind").arg(&manifest.game_dir).arg(&manifest.game_dir);
+        .arg("--dir").arg(&target_game_dir);
 
+    // Ro-bind all entries from the Nix store game_dir into the sandbox target_game_dir
+    if let Ok(entries) = fs::read_dir(&manifest.game_dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if let Some(file_name) = p.file_name() {
+                let guest_target = target_game_dir.join(file_name);
+                cmd.arg("--ro-bind").arg(&p).arg(&guest_target);
+            }
+        }
+    }
+
+    // Bind all mutable directories onto the sandbox target_game_dir
     for sub in &mutable_subdirs {
         let host_p = data_root.join(sub);
-        let guest_p = manifest.game_dir.join(sub);
+        let guest_p = target_game_dir.join(sub);
         cmd.arg("--bind").arg(&host_p).arg(&guest_p);
     }
+
+    let assets_dir = if manifest.assets_dir.exists() {
+        manifest.assets_dir
+    } else if let Some(data) = xdg.get_data_home() {
+        let p = data.join("shared").join("assets");
+        if p.exists() {
+            p
+        } else {
+            manifest.assets_dir
+        }
+    } else {
+        manifest.assets_dir
+    };
 
     if sandbox_lib.exists() {
         cmd.env("LD_PRELOAD", &sandbox_lib);
     }
-    cmd.env("NITE_GAME_DIR", &manifest.game_dir);
+    cmd.env("NITE_GAME_DIR", &target_game_dir);
     cmd.env("NITE_MUTABLE_DIRS", "saves:screenshots:logs:xaero:XaeroWorldMap:XaeroWaypoints");
 
     // Pass Java command line inside bubblewrap
@@ -224,8 +251,8 @@ fn launch_instance(instance: &str) -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg("-cp").arg(classpath_joined)
         .arg(&manifest.main_class)
         .arg("--version").arg(&manifest.version)
-        .arg("--gameDir").arg(&manifest.game_dir)
-        .arg("--assetsDir").arg(&manifest.assets_dir)
+        .arg("--gameDir").arg(&target_game_dir)
+        .arg("--assetsDir").arg(&assets_dir)
         .arg("--assetIndex").arg(&manifest.asset_index)
         .arg("--username").arg(&manifest.username)
         .args([

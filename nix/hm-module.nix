@@ -72,7 +72,7 @@ let
         else null;
 
     in pkgs.runCommand "nite-instance-${inst.name}" {} ''
-      mkdir -p $out/mods $out/resourcepacks $out/shaderpacks $out/config
+      mkdir -p $out/mods $out/resourcepacks $out/shaderpacks $out/config $out/saves $out/screenshots $out/logs $out/xaero $out/XaeroWorldMap $out/XaeroWaypoints
 
       # Symlink immutable mods
       ${lib.concatMapStringsSep "\n" (m: ''
@@ -193,7 +193,7 @@ let
         main_class = mainClass;
         classpath = classpath;
         game_dir = gameDir;
-        assets_dir = "${cfg.package}/share/nite/assets";
+        assets_dir = "${config.home.homeDirectory}/.local/share/nite/shared/assets";
         asset_index = assetIndexId;
         memory = if inst.memory != null then inst.memory else "4G";
         jvm_flags = [
