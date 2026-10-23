@@ -85,7 +85,7 @@ static void init_symbols(void) {
 
     const char *env_mut = getenv("NITE_MUTABLE_DIRS");
     if (!env_mut) {
-        env_mut = "saves:screenshots:logs:xaero:XaeroWorldMap:XaeroWaypoints";
+        env_mut = "saves:screenshots:logs:xaero:XaeroWorldMap:XaeroWaypoints:.fabric:CustomSkinLoader";
     }
 
     char buf[512];

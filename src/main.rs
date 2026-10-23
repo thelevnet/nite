@@ -174,6 +174,8 @@ fn launch_instance(instance: &str) -> Result<(), Box<dyn std::error::Error>> {
         "xaero",
         "XaeroWorldMap",
         "XaeroWaypoints",
+        ".fabric",
+        "CustomSkinLoader",
     ];
 
     for sub in &mutable_subdirs {
@@ -237,7 +239,7 @@ fn launch_instance(instance: &str) -> Result<(), Box<dyn std::error::Error>> {
         cmd.env("LD_PRELOAD", &sandbox_lib);
     }
     cmd.env("NITE_GAME_DIR", &target_game_dir);
-    cmd.env("NITE_MUTABLE_DIRS", "saves:screenshots:logs:xaero:XaeroWorldMap:XaeroWaypoints");
+    cmd.env("NITE_MUTABLE_DIRS", "saves:screenshots:logs:xaero:XaeroWorldMap:XaeroWaypoints:.fabric:CustomSkinLoader");
 
     // Pass Java command line inside bubblewrap
     cmd.arg(&manifest.java)

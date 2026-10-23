@@ -72,7 +72,7 @@ let
         else null;
 
     in pkgs.runCommand "nite-instance-${inst.name}" {} ''
-      mkdir -p $out/mods $out/resourcepacks $out/shaderpacks $out/config $out/saves $out/screenshots $out/logs $out/xaero $out/XaeroWorldMap $out/XaeroWaypoints
+      mkdir -p $out/mods $out/resourcepacks $out/shaderpacks $out/config $out/saves $out/screenshots $out/logs $out/xaero $out/XaeroWorldMap $out/XaeroWaypoints $out/.fabric $out/CustomSkinLoader
 
       # Symlink immutable mods
       ${lib.concatMapStringsSep "\n" (m: ''
