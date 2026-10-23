@@ -101,6 +101,21 @@ static void init_symbols(void) {
     }
 }
 
+static void normalize_path_in_place(char *p) {
+    char *src = p;
+    char *dst = p;
+    while (*src) {
+        if (src[0] == '/' && src[1] == '.' && src[2] == '/') {
+            src += 2; // skip "/."
+        } else if (src[0] == '/' && src[1] == '/') {
+            src++; // skip duplicate slash
+        } else {
+            *dst++ = *src++;
+        }
+    }
+    *dst = '\0';
+}
+
 // Returns 1 if path is inside game_dir AND NOT in a mutable directory.
 static int is_immutable_target(int dirfd, const char *path) {
     if (!path || path[0] == '\0') return 0;
@@ -137,13 +152,21 @@ static int is_immutable_target(int dirfd, const char *path) {
 
     if (resolved[0] == '\0') return 0;
 
+    normalize_path_in_place(resolved);
+
     // Check if path starts with g_game_dir
     if (strncmp(resolved, g_game_dir, g_game_dir_len) != 0) {
         return 0; // outside game dir
     }
 
     const char *rel = resolved + g_game_dir_len;
-    while (*rel == '/') rel++;
+    while (*rel == '/' || (rel[0] == '.' && rel[1] == '/')) {
+        if (*rel == '/') {
+            rel++;
+        } else {
+            rel += 2;
+        }
+    }
 
     if (*rel == '\0') {
         // the game dir itself
@@ -159,6 +182,24 @@ static int is_immutable_target(int dirfd, const char *path) {
                 return 0; // matches a mutable directory -> allow real write!
             }
         }
+    }
+
+    // If inside "config", check if target is an existing read-only Nix store file/mount.
+    if (strncmp(rel, "config", 6) == 0 && (rel[6] == '\0' || rel[6] == '/')) {
+        if (strstr(rel, "..") != NULL) {
+            return 1;
+        }
+
+        struct stat st;
+        if (stat(resolved, &st) == 0) {
+            // Target exists. If it's read-only (Nix store ro-bind), protect it!
+            if ((st.st_mode & 0222) == 0 || access(resolved, W_OK) != 0) {
+                return 1;
+            }
+            return 0; // Existing writable file/dir on tmpfs
+        }
+        // Target does not exist yet. Allow creation on tmpfs!
+        return 0;
     }
 
     // Inside game_dir, but NOT in a mutable directory -> immutable!

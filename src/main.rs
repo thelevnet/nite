@@ -148,6 +148,23 @@ fn which_bwrap() -> Option<PathBuf> {
     None
 }
 
+fn bind_config_dir(src: &Path, dst: &Path, cmd: &mut Command) {
+    if let Ok(entries) = fs::read_dir(src) {
+        for entry in entries.flatten() {
+            let src_entry = entry.path();
+            if let Some(file_name) = src_entry.file_name() {
+                let dst_entry = dst.join(file_name);
+                if src_entry.is_dir() {
+                    cmd.arg("--dir").arg(&dst_entry);
+                    bind_config_dir(&src_entry, &dst_entry, cmd);
+                } else {
+                    cmd.arg("--ro-bind").arg(&src_entry).arg(&dst_entry);
+                }
+            }
+        }
+    }
+}
+
 fn launch_instance(instance: &str) -> Result<(), Box<dyn std::error::Error>> {
     let manifest_path = find_manifest(instance)?;
     let file = File::open(&manifest_path)?;
@@ -205,13 +222,25 @@ fn launch_instance(instance: &str) -> Result<(), Box<dyn std::error::Error>> {
         .arg("--dir").arg(&target_game_dir)
         .arg("--chdir").arg(&target_game_dir);
 
+    // Create target game dir config directory on tmpfs
+    let guest_config = target_game_dir.join("config");
+    cmd.arg("--dir").arg(&guest_config);
+
     // Ro-bind all entries from the Nix store game_dir into the sandbox target_game_dir
     if let Ok(entries) = fs::read_dir(&manifest.game_dir) {
         for entry in entries.flatten() {
             let p = entry.path();
             if let Some(file_name) = p.file_name() {
-                let guest_target = target_game_dir.join(file_name);
-                cmd.arg("--ro-bind").arg(&p).arg(&guest_target);
+                let name_str = file_name.to_string_lossy();
+                if name_str == "config" {
+                    bind_config_dir(&p, &guest_config, &mut cmd);
+                } else if mutable_subdirs.contains(&name_str.as_ref()) {
+                    // Skip mutable directories as they will be bound from data_root below
+                    continue;
+                } else {
+                    let guest_target = target_game_dir.join(file_name);
+                    cmd.arg("--ro-bind").arg(&p).arg(&guest_target);
+                }
             }
         }
     }
