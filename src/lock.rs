@@ -516,7 +516,7 @@ pub fn discover_specs() -> Vec<InstanceSpec> {
                 "sodium-extra".into(), "lithium".into(), "iris".into(), "patpat".into(),
                 "modmenu".into(), "appleskin".into(), "continuity".into(), "customskinloader".into(),
                 "elytrapitch".into(), "ferrite-core".into(), "freecam".into(), "shulkerboxtooltip".into(),
-                "ukus-armor-hud".into(), "sodium".into(), "xaeros-world-map".into(),
+                "ukus-armor-hud".into(), "waylandcraft".into(), "sodium".into(), "xaeros-world-map".into(),
                 "fullbright".into(), "lighty".into(),
             ],
             resourcepacks: vec!["fresh-food".into(), "fresh-music-discs".into()],

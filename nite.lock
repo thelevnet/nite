@@ -449,6 +449,12 @@
           "sha512": "20f2fe916307fda8ad39906da484818fe91d59da6b6ebe24ef2cd57248584615bb77e8164d1cac029431fdd0ae856acdb345b8b5c56e3f77c1a7d953cdf4e319"
         },
         {
+          "name": "waylandcraft",
+          "filename": "waylandcraft-v2.1.0.jar",
+          "url": "https://cdn.modrinth.com/data/9yAfrPwH/versions/8DOHTueH/waylandcraft-v2.1.0.jar",
+          "sha512": "2195f5294bf5372eb3d29913f5480700ce646974df622b95dbfc3ffaccd6ac1fe8a3f93773cf08fb101972958036905b9f73c5568757110d6abf34f945c6a164"
+        },
+        {
           "name": "sodium",
           "filename": "sodium-fabric-0.9.2+mc26.1.2.jar",
           "url": "https://cdn.modrinth.com/data/AANobbMI/versions/tZQ3jqnf/sodium-fabric-0.9.2%2Bmc26.1.2.jar",

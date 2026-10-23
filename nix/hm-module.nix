@@ -319,7 +319,7 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    home.packages = [ cfg.package ] ++ (
+    home.packages = [ cfg.package pkgs.libxkbcommon ] ++ (
       map (inst: pkgs.writeShellScriptBin "nite-${inst.name}" ''
         exec ${cfg.package}/bin/nite run "${inst.name}" "$@"
       '') cfg.instances
