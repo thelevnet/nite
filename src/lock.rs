@@ -285,20 +285,31 @@ pub fn resolve_fabric(client: &reqwest::blocking::Client, mc_version: &str) -> R
 }
 
 #[derive(Deserialize)]
-struct ModrinthVersion {
-    files: Vec<ModrinthFile>,
+pub struct ModrinthVersion {
+    pub id: String,
+    pub project_id: String,
+    pub files: Vec<ModrinthFile>,
+    #[serde(default)]
+    pub dependencies: Vec<ModrinthDependency>,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct ModrinthDependency {
+    pub version_id: Option<String>,
+    pub project_id: Option<String>,
+    pub dependency_type: String,
 }
 
 #[derive(Deserialize)]
-struct ModrinthFile {
-    url: String,
-    filename: String,
-    hashes: ModrinthHashes,
+pub struct ModrinthFile {
+    pub url: String,
+    pub filename: String,
+    pub hashes: ModrinthHashes,
 }
 
 #[derive(Deserialize)]
-struct ModrinthHashes {
-    sha512: String,
+pub struct ModrinthHashes {
+    pub sha512: String,
 }
 
 pub fn resolve_modrinth_item(
@@ -306,7 +317,7 @@ pub fn resolve_modrinth_item(
     slug: &str,
     is_mod: bool,
     mc_version: &str,
-) -> Result<LockedPackage, Box<dyn std::error::Error>> {
+) -> Result<(LockedPackage, String, Vec<ModrinthDependency>), Box<dyn std::error::Error>> {
     let gv_val = format!("[\"{mc_version}\"]");
     let ld_val = "[\"fabric\"]";
     let mut parsed_url = reqwest::Url::parse(&format!("{MODRINTH_API_URL}/project/{slug}/version"))?;
@@ -326,15 +337,17 @@ pub fn resolve_modrinth_item(
     let versions: Vec<ModrinthVersion> = res.json()?;
     let first = versions.into_iter().next()
         .ok_or_else(|| format!("No compatible version found for '{slug}' on Minecraft {mc_version}"))?;
+    let project_id = first.project_id.clone();
+    let deps = first.dependencies.clone();
     let file = first.files.into_iter().next()
         .ok_or_else(|| format!("No files found in version for '{slug}'"))?;
 
-    Ok(LockedPackage {
+    Ok((LockedPackage {
         name: slug.to_string(),
         filename: file.filename,
         url: file.url,
         sha512: file.hashes.sha512,
-    })
+    }, project_id, deps))
 }
 
 pub fn lock_instances(specs: &[InstanceSpec], out_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
@@ -357,10 +370,30 @@ pub fn lock_instances(specs: &[InstanceSpec], out_path: &Path) -> Result<(), Box
         };
 
         let mut mods = Vec::new();
-        for m in &spec.mods {
+        let mut visited_projects = std::collections::HashSet::new();
+        let mut queue: std::collections::VecDeque<String> = spec.mods.iter().cloned().collect();
+
+        while let Some(m) = queue.pop_front() {
+            if visited_projects.contains(&m) {
+                continue;
+            }
             println!("  • mod: {m}");
-            match resolve_modrinth_item(&client, m, true, &spec.version) {
-                Ok(pkg) => mods.push(pkg),
+            match resolve_modrinth_item(&client, &m, true, &spec.version) {
+                Ok((pkg, project_id, deps)) => {
+                    visited_projects.insert(m.clone());
+                    visited_projects.insert(project_id);
+                    mods.push(pkg);
+
+                    for dep in deps {
+                        if dep.dependency_type == "required" {
+                            if let Some(pid) = dep.project_id {
+                                if !visited_projects.contains(&pid) && !queue.contains(&pid) {
+                                    queue.push_back(pid);
+                                }
+                            }
+                        }
+                    }
+                }
                 Err(e) => eprintln!("    warning: failed to lock mod '{m}': {e}"),
             }
         }
@@ -369,7 +402,7 @@ pub fn lock_instances(specs: &[InstanceSpec], out_path: &Path) -> Result<(), Box
         for rp in &spec.resourcepacks {
             println!("  • resourcepack: {rp}");
             match resolve_modrinth_item(&client, rp, false, &spec.version) {
-                Ok(pkg) => resourcepacks.push(pkg),
+                Ok((pkg, _, _)) => resourcepacks.push(pkg),
                 Err(e) => eprintln!("    warning: failed to lock resourcepack '{rp}': {e}"),
             }
         }
@@ -378,7 +411,7 @@ pub fn lock_instances(specs: &[InstanceSpec], out_path: &Path) -> Result<(), Box
         for sp in &spec.shaderpacks {
             println!("  • shaderpack: {sp}");
             match resolve_modrinth_item(&client, sp, false, &spec.version) {
-                Ok(pkg) => shaderpacks.push(pkg),
+                Ok((pkg, _, _)) => shaderpacks.push(pkg),
                 Err(e) => eprintln!("    warning: failed to lock shaderpack '{sp}': {e}"),
             }
         }

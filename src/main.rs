@@ -202,7 +202,8 @@ fn launch_instance(instance: &str) -> Result<(), Box<dyn std::error::Error>> {
         .arg("--dev").arg("/dev")
         .arg("--proc").arg("/proc")
         .arg("--tmpfs").arg("/tmp")
-        .arg("--dir").arg(&target_game_dir);
+        .arg("--dir").arg(&target_game_dir)
+        .arg("--chdir").arg(&target_game_dir);
 
     // Ro-bind all entries from the Nix store game_dir into the sandbox target_game_dir
     if let Ok(entries) = fs::read_dir(&manifest.game_dir) {
